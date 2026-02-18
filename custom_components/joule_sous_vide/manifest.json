@@ -1,9 +1,11 @@
 {
   "domain": "joule_sous_vide",
   "name": "ChefSteps Joule Sous Vide",
-  "version": "0.2",
+  "version": "0.3",
   "documentation": "https://example.com",
   "dependencies": [],
-  "codeowners": [ "@catomaior" ],
-  "requirements": [ "requests" ]
+  "codeowners": ["@catomaior"],
+  "requirements": ["pygatt"],
+  "config_flow": true,
+  "iot_class": "local_polling"
 }

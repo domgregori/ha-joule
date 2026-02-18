@@ -1,36 +1,59 @@
-from homeassistant.helpers.entity import Entity
-import logging
+"""Temperature sensor entity for the Joule Sous Vide integration."""
+from __future__ import annotations
 
-from .joule_ble import JouleBLEAPI  # Import the BLE API class
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntity,
+    SensorStateClass,
+)
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import UnitOfTemperature
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.typing import StateType
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-_LOGGER = logging.getLogger(__name__)
+from .const import DOMAIN
+from .coordinator import JouleCoordinator
 
-DOMAIN = "joule_sous_vide"
 
-async def async_setup_platform(hass, config, async_add_entities, discovery_info=None):
-    """Set up the Joule temperature sensor."""
-    mac_address = config.get("mac_address")  # Get the MAC address from config
-    async_add_entities([JouleTemperatureSensor(mac_address)])
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Set up the temperature sensor from a config entry."""
+    coordinator: JouleCoordinator = hass.data[DOMAIN][entry.entry_id]
+    async_add_entities([JouleTemperatureSensor(coordinator, entry)])
 
-class JouleTemperatureSensor(Entity):
-    """Representation of a Joule Temperature Sensor."""
 
-    def __init__(self, mac_address):
-        """Initialize the sensor."""
-        self._joule_api = JouleBLEAPI(mac_address)
-        self._joule_api.connect()
-        self._temperature = None
+class JouleTemperatureSensor(CoordinatorEntity[JouleCoordinator], SensorEntity):
+    """Reports the current water temperature read from the Joule device.
+
+    Becomes unavailable automatically when the coordinator fails to poll
+    the device (BLE connection lost, device powered off, etc.).
+    """
+
+    _attr_has_entity_name = True
+    _attr_name = "Current Temperature"
+    _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+    _attr_device_class = SensorDeviceClass.TEMPERATURE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, coordinator: JouleCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{entry.entry_id}_current_temperature"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, entry.entry_id)},
+            name="Joule Sous Vide",
+            manufacturer="ChefSteps",
+            model="Joule",
+        )
 
     @property
-    def name(self):
-        """Return the name of the sensor."""
-        return "Joule Current Temperature"
-
-    @property
-    def state(self):
-        """Return the state of the sensor."""
-        return self._temperature
-
-    async def async_update(self):
-        """Fetch new state data for the sensor."""
-        self._temperature = self._joule_api.get_current_temperature()
+    def native_value(self) -> StateType:
+        """Return the current temperature from coordinator data."""
+        if self.coordinator.data is None:
+            return None
+        return self.coordinator.data.get("current_temperature")

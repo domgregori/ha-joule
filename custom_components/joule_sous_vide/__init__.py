@@ -1,20 +1,51 @@
+"""The Joule Sous Vide integration."""
+from __future__ import annotations
+
 import logging
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryNotReady
+
+from .const import DOMAIN
+from .coordinator import JouleCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-DOMAIN = "joule_sous_vide"
+PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.SWITCH]
 
-async def async_setup(hass: HomeAssistant, config: dict):
-    """Set up the Joule Sous Vide component."""
-    _LOGGER.info("Setting up Joule Sous Vide component")
-    return True
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
-    """Set up Joule Sous Vide from a config entry."""
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Set up Joule Sous Vide from a config entry.
+
+    Creates the coordinator, performs the first BLE poll to verify the
+    device is reachable, then forwards setup to the sensor and switch platforms.
+    Raises ConfigEntryNotReady if the device cannot be reached so HA will
+    retry automatically.
+    """
+    coordinator = JouleCoordinator(hass, entry)
+
+    try:
+        await coordinator.async_config_entry_first_refresh()
+    except Exception as err:
+        raise ConfigEntryNotReady(
+            f"Cannot connect to Joule at {entry.data.get('mac_address')}: {err}"
+        ) from err
+
     hass.data.setdefault(DOMAIN, {})
-    # Example: Initialize connection with the Joule
-    hass.data[DOMAIN][entry.entry_id] = await your_joule_library.connect_to_joule()
+    hass.data[DOMAIN][entry.entry_id] = coordinator
+
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
+
+
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Unload a config entry and disconnect from the device."""
+    coordinator: JouleCoordinator = hass.data[DOMAIN][entry.entry_id]
+
+    if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
+        hass.data[DOMAIN].pop(entry.entry_id)
+        await hass.async_add_executor_job(coordinator.api.disconnect)
+
+    return unload_ok

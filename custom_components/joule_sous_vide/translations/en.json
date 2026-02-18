@@ -1,0 +1,20 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to Joule Sous Vide",
+        "description": "Enter the Bluetooth MAC address of your Joule device (e.g. AA:BB:CC:DD:EE:FF).",
+        "data": {
+          "mac_address": "MAC Address"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect. Make sure the Joule is powered on and in Bluetooth range.",
+      "unknown": "An unexpected error occurred."
+    },
+    "abort": {
+      "already_configured": "This Joule device is already configured."
+    }
+  }
+}
