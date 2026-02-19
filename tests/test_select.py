@@ -163,6 +163,29 @@ async def test_select_option_reflected_in_state(
 
 
 # ---------------------------------------------------------------------------
+# Persistence
+# ---------------------------------------------------------------------------
+
+
+async def test_selecting_celsius_persists_to_config_entry(
+    hass: HomeAssistant,
+    setup_integration: MockConfigEntry,
+) -> None:
+    """Selecting °C via the select entity writes the unit to config entry options."""
+    entity_id = _get_select_entity_id(hass)
+
+    await hass.services.async_call(
+        "select",
+        "select_option",
+        {"entity_id": entity_id, "option": UnitOfTemperature.CELSIUS},
+        blocking=True,
+    )
+    await hass.async_block_till_done()
+
+    assert setup_integration.options.get("temperature_unit") == UnitOfTemperature.CELSIUS
+
+
+# ---------------------------------------------------------------------------
 # Unavailability
 # ---------------------------------------------------------------------------
 

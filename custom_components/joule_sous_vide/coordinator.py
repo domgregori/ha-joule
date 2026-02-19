@@ -35,11 +35,14 @@ class JouleCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+        self._entry = entry
         self.api = JouleBLEAPI(entry.data[CONF_MAC_ADDRESS])
         self._is_cooking: bool = False
         self._target_temperature: float = DEFAULT_TARGET_TEMPERATURE  # always °C
         self._cook_time_minutes: float = DEFAULT_COOK_TIME_MINUTES
-        self._temperature_unit: str = DEFAULT_TEMPERATURE_UNIT
+        self._temperature_unit: str = entry.options.get(
+            "temperature_unit", DEFAULT_TEMPERATURE_UNIT
+        )
 
         super().__init__(
             hass,
@@ -98,8 +101,12 @@ class JouleCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         await self.async_refresh()
 
     async def async_set_temperature_unit(self, unit: str) -> None:
-        """Update the display unit preference without affecting the stored °C value."""
+        """Update the display unit preference and persist it to the config entry."""
         self._temperature_unit = unit
+        self.hass.config_entries.async_update_entry(
+            self._entry,
+            options={**self._entry.options, "temperature_unit": unit},
+        )
         await self.async_refresh()
 
     async def async_set_cook_time(self, value: float) -> None:

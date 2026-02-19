@@ -155,7 +155,7 @@ Single owner of the BLE connection. Entities read from `coordinator.data` and ca
 | `_is_cooking` | `bool` | `False` | Whether a cook is in progress |
 | `_target_temperature` | `float` | `60.0` | Target temperature in **°C** |
 | `_cook_time_minutes` | `float` | `0.0` | Cook duration (0 = unlimited) |
-| `_temperature_unit` | `str` | `"°F"` | Display unit preference |
+| `_temperature_unit` | `str` | `"°F"` | Display unit preference — loaded from `entry.options["temperature_unit"]` on startup, persisted there on change |
 
 **`coordinator.data` keys** (refreshed every 30 s):
 
@@ -176,7 +176,7 @@ Single owner of the BLE connection. Entities read from `coordinator.data` and ca
 | `async_stop_cooking()` | Sends `stop_cooking()` over BLE, sets `_is_cooking = False`, calls `async_refresh()`. |
 | `async_set_target_temperature(value_celsius)` | Updates `_target_temperature` (°C) and refreshes. No BLE call. |
 | `async_set_cook_time(value)` | Updates `_cook_time_minutes` and refreshes. No BLE call. |
-| `async_set_temperature_unit(unit)` | Updates `_temperature_unit` and refreshes. No BLE call, no conversion of stored temperature. |
+| `async_set_temperature_unit(unit)` | Updates `_temperature_unit`, persists the value to `ConfigEntry.options` via `async_update_entry`, and refreshes. No BLE call, no conversion of the stored °C temperature. |
 
 > `async_refresh()` is used (not `async_request_refresh()`) because control actions require immediate state reflection. `async_request_refresh` is debounced and would delay the state update.
 
@@ -306,4 +306,4 @@ custom_components/joule_sous_vide/
 | **Cooking state is write-only** | `is_cooking` is tracked internally. If the device is stopped from the ChefSteps app or loses power, HA will not detect the change automatically. |
 | **BLE UUIDs are unverified** | All GATT characteristic UUIDs are placeholders pending confirmation against real hardware. |
 | **One BLE connection at a time** | `pygatt` holds a single connection per `JouleBLEAPI` instance. The ChefSteps app must be closed while this integration is active. |
-| **Temperature unit is not persisted** | `_temperature_unit` is in-memory only and resets to `"°F"` on HA restart. Persistence across restarts requires storing the value in a `ConfigEntry` options or a `RestoreEntity`. |
+| **Temperature unit is persisted** | `_temperature_unit` is written to `ConfigEntry.options` on every change and read back on startup. It survives HA restarts. |

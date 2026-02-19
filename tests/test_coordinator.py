@@ -10,6 +10,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.joule_sous_vide.const import (
     DEFAULT_COOK_TIME_MINUTES,
     DEFAULT_TARGET_TEMPERATURE,
+    DEFAULT_TEMPERATURE_UNIT,
     DOMAIN,
 )
 from custom_components.joule_sous_vide.coordinator import JouleCoordinator
@@ -33,6 +34,7 @@ async def test_update_data_returns_expected_shape(
     assert "is_cooking" in coordinator.data
     assert "target_temperature" in coordinator.data
     assert "cook_time_minutes" in coordinator.data
+    assert "temperature_unit" in coordinator.data
 
 
 async def test_update_data_reflects_device_temperature(
@@ -95,6 +97,59 @@ async def test_initial_defaults(
     coordinator: JouleCoordinator = hass.data[DOMAIN][setup_integration.entry_id]
     assert coordinator.data["target_temperature"] == DEFAULT_TARGET_TEMPERATURE
     assert coordinator.data["cook_time_minutes"] == DEFAULT_COOK_TIME_MINUTES
+
+
+# ---------------------------------------------------------------------------
+# Temperature unit persistence
+# ---------------------------------------------------------------------------
+
+
+async def test_temperature_unit_default(
+    hass: HomeAssistant,
+    setup_integration: MockConfigEntry,
+) -> None:
+    """Temperature unit defaults to °F when no option is stored."""
+    coordinator: JouleCoordinator = hass.data[DOMAIN][setup_integration.entry_id]
+    assert coordinator.data["temperature_unit"] == DEFAULT_TEMPERATURE_UNIT
+
+
+async def test_set_temperature_unit_persists_to_config_entry(
+    hass: HomeAssistant,
+    setup_integration: MockConfigEntry,
+) -> None:
+    """Changing the temperature unit writes it to config entry options."""
+    from homeassistant.const import UnitOfTemperature
+
+    coordinator: JouleCoordinator = hass.data[DOMAIN][setup_integration.entry_id]
+
+    await coordinator.async_set_temperature_unit(UnitOfTemperature.CELSIUS)
+    await hass.async_block_till_done()
+
+    assert setup_integration.options.get("temperature_unit") == UnitOfTemperature.CELSIUS
+
+
+async def test_temperature_unit_loaded_from_options_on_startup(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_ble_api: MagicMock,
+) -> None:
+    """Coordinator loads the persisted temperature unit from config entry options."""
+    from homeassistant.const import UnitOfTemperature
+    from custom_components.joule_sous_vide.const import CONF_MAC_ADDRESS
+    from tests.conftest import TEST_MAC
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_MAC_ADDRESS: TEST_MAC},
+        options={"temperature_unit": UnitOfTemperature.CELSIUS},
+        unique_id=TEST_MAC,
+    )
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    coordinator: JouleCoordinator = hass.data[DOMAIN][entry.entry_id]
+    assert coordinator.data["temperature_unit"] == UnitOfTemperature.CELSIUS
 
 
 # ---------------------------------------------------------------------------
