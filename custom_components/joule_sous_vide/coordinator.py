@@ -87,7 +87,7 @@ class JouleCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             raise HomeAssistantError(f"Failed to start cooking: {err}") from err
 
         self._is_cooking = True
-        await self.async_request_refresh()
+        await self.async_refresh()
 
     async def async_stop_cooking(self) -> None:
         """Stop the cooking cycle."""
@@ -98,4 +98,4 @@ class JouleCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             raise HomeAssistantError(f"Failed to stop cooking: {err}") from err
 
         self._is_cooking = False
-        await self.async_request_refresh()
+        await self.async_refresh()
