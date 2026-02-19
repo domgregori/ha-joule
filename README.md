@@ -139,9 +139,9 @@ For full troubleshooting steps, see **[docs/troubleshooting.md](docs/troubleshoo
 
 These are the next planned improvements, in priority order:
 
-### 1 — Set a target temperature
+### ~~1 — Set a target temperature~~ ✅ Done
 
-Right now the Joule always heats to the default 60 °C. The next step is to add a `number` entity for target temperature (and optionally cook time) that the user sets from the dashboard or an automation. When the Sous Vide switch is turned on, it reads the current value of that entity and passes it to the device — no configuration flow changes required.
+Two `number` entities — **Target Temperature** (0–100 °C) and **Cook Time** (0–1440 min) — let you set cooking parameters from the dashboard or an automation. When the Sous Vide switch is turned on it reads the current values and passes them to the device.
 
 ### 2 — Custom Lovelace card
 
