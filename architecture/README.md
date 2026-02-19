@@ -2,12 +2,17 @@
 
 ## Overview
 
-This integration connects Home Assistant to a **ChefSteps Joule Sous Vide** device over **Bluetooth Low Energy (BLE)**. It exposes two HA entities:
+This integration connects Home Assistant to a **ChefSteps Joule Sous Vide** device over **Bluetooth Low Energy (BLE)**. It exposes five HA entities across four platforms:
 
-- A **sensor** that reads the current water temperature from the device.
-- A **switch** that starts and stops the cooking process (setting temperature and cook time before starting).
+| Platform | Entity | Purpose |
+|---|---|---|
+| `sensor` | Current Temperature | Live water temperature read from device (°C) |
+| `switch` | Sous Vide | Starts / stops the cooking cycle |
+| `number` | Target Temperature | Sets the temperature to heat to (displayed in °F or °C) |
+| `number` | Cook Time | Sets the cook duration in minutes (0 = unlimited) |
+| `select` | Temperature Unit | Chooses the display unit for Target Temperature (°F default) |
 
-Communication with the physical device goes exclusively through `JouleBLEAPI`, which wraps the `pygatt` GATT library.
+All communication with the physical device goes exclusively through `JouleBLEAPI`, which wraps the `pygatt` GATT library. Entities never access BLE directly — they call coordinator methods and read from `coordinator.data`.
 
 ---
 
@@ -15,51 +20,115 @@ Communication with the physical device goes exclusively through `JouleBLEAPI`, w
 
 ```mermaid
 graph TD
-    HA[Home Assistant Core] -->|async_setup / async_setup_entry| INIT[__init__.py]
-    HA -->|async_setup_platform| SENSOR[sensor.py]
-    HA -->|async_setup_platform| SWITCH[switch.py]
+    HA[Home Assistant Core] -->|async_setup_entry| INIT[__init__.py]
 
-    SENSOR -->|instantiates & calls| BLE[joule_ble.py\nJouleBLEAPI]
-    SWITCH -->|instantiates & calls| BLE
+    INIT -->|creates + first refresh| COORD[coordinator.py\nJouleCoordinator]
+    INIT -->|forward_entry_setups| NUMBER[number.py]
+    INIT -->|forward_entry_setups| SELECT[select.py]
+    INIT -->|forward_entry_setups| SENSOR[sensor.py]
+    INIT -->|forward_entry_setups| SWITCH[switch.py]
 
+    COORD -->|async_add_executor_job| BLE[joule_ble.py\nJouleBLEAPI]
     BLE -->|pygatt GATTToolBackend| JOULE[(Joule Device\nBLE / GATT)]
 
-    HA -->|reads state| SENSOR
-    HA -->|turn_on / turn_off| SWITCH
+    NUMBER -->|CoordinatorEntity reads coordinator.data| COORD
+    NUMBER -->|async_set_target_temperature °C| COORD
+    NUMBER -->|async_set_cook_time| COORD
+
+    SELECT -->|CoordinatorEntity reads coordinator.data| COORD
+    SELECT -->|async_set_temperature_unit| COORD
+
+    SENSOR -->|CoordinatorEntity reads coordinator.data| COORD
+
+    SWITCH -->|CoordinatorEntity reads coordinator.data| COORD
+    SWITCH -->|async_start_cooking / async_stop_cooking| COORD
+
+    CFG[config_flow.py] -->|validates MAC via BLE| BLE
+    CFG -->|creates ConfigEntry| INIT
+
+    CONST[const.py] -.->|DOMAIN, UUIDs, defaults, bounds| COORD
+    CONST -.-> BLE
+    CONST -.-> NUMBER
+    CONST -.-> CFG
 ```
 
 ---
 
-## Data Flow
+## Temperature Unit Architecture
+
+The integration maintains a strict separation between **display units** and **internal units**:
+
+```
+User sets Target Temperature (e.g. 167 °F)
+        │
+        ▼
+JouleTargetTemperatureNumber.async_set_native_value(167)
+        │  converts °F → °C: (167 - 32) × 5/9 = 75.0
+        ▼
+coordinator._target_temperature = 75.0  (always °C)
+        │
+        ├──► coordinator.data["target_temperature"] = 75.0
+        │           read back by number entity → displayed as 167 °F
+        │
+        └──► async_start_cooking(75.0, ...) → api.set_temperature(75.0)
+                                                BLE device always receives °C
+```
+
+The `JouleTemperatureUnitSelect` entity only changes `coordinator._temperature_unit`; it never touches `_target_temperature`. All conversions are localised to `number.py`.
+
+---
+
+## Data Flow: Start a Cooking Session
 
 ```mermaid
 sequenceDiagram
-    participant HA as Home Assistant
-    participant SW as JouleSousVideSwitch
+    participant User
+    participant NUM as JouleTargetTemperatureNumber
+    participant SEL as JouleTemperatureUnitSelect
+    participant COORD as JouleCoordinator
     participant BLE as JouleBLEAPI
     participant DEV as Joule BLE Device
 
-    HA->>SW: async_turn_on()
-    SW->>BLE: set_temperature(60)
-    BLE->>DEV: char_write(TEMPERATURE_CHAR_UUID, 6000 as 2-byte LE)
-    SW->>BLE: set_cook_time(0)
-    BLE->>DEV: char_write(TIME_CHAR_UUID, 0 as 4-byte LE)
-    SW->>BLE: start_cooking()
-    BLE->>DEV: char_write(START_STOP_CHAR_UUID, 0x01)
-    SW->>HA: async_update_ha_state()
+    User->>SEL: select_option("°F")
+    SEL->>COORD: async_set_temperature_unit("°F")
+    COORD-->>COORD: _temperature_unit = "°F"
 
-    HA->>SW: async_update()
-    SW->>BLE: get_current_temperature()
+    User->>NUM: set_value(167.0)
+    NUM->>NUM: convert 167°F → 75.0°C
+    NUM->>COORD: async_set_target_temperature(75.0)
+    COORD-->>COORD: _target_temperature = 75.0
+
+    User->>COORD: (switch turn_on)
+    COORD->>BLE: ensure_connected()
+    COORD->>BLE: set_temperature(75.0)
+    BLE->>DEV: char_write(TEMPERATURE_CHAR_UUID, 7500 as 2-byte LE)
+    COORD->>BLE: set_cook_time(cook_time_minutes)
+    BLE->>DEV: char_write(TIME_CHAR_UUID, seconds as 4-byte LE)
+    COORD->>BLE: start_cooking()
+    BLE->>DEV: char_write(START_STOP_CHAR_UUID, 0x01)
+    COORD-->>COORD: _is_cooking = True
+    COORD->>COORD: async_refresh() → entities update
+```
+
+## Data Flow: Periodic Temperature Poll
+
+```mermaid
+sequenceDiagram
+    participant HA as Home Assistant (scheduler)
+    participant COORD as JouleCoordinator
+    participant BLE as JouleBLEAPI
+    participant DEV as Joule BLE Device
+    participant SENSOR as JouleTemperatureSensor
+
+    HA->>COORD: _async_update_data() [every 30 s]
+    COORD->>BLE: ensure_connected()
+    COORD->>BLE: get_current_temperature()
     BLE->>DEV: char_read(CURRENT_TEMP_CHAR_UUID)
     DEV-->>BLE: raw bytes (centidegrees, little-endian)
-    BLE-->>SW: float (°C)
-
-    HA->>SN: async_update()  [SN = JouleTemperatureSensor]
-    SN->>BLE: get_current_temperature()
-    BLE->>DEV: char_read(CURRENT_TEMP_CHAR_UUID)
-    DEV-->>BLE: raw bytes
-    BLE-->>SN: float (°C)
-    SN-->>HA: state = current temp
+    BLE-->>COORD: float (°C)
+    COORD-->>COORD: returns coordinator.data dict
+    COORD-->>SENSOR: _handle_coordinator_update()
+    SENSOR-->>HA: state = current_temperature (°C)
 ```
 
 ---
@@ -70,86 +139,142 @@ sequenceDiagram
 
 | Function | Signature | What it does |
 |---|---|---|
-| `async_setup` | `(hass, config) → bool` | Legacy YAML-based setup hook. Logs that the component is loading and returns `True`. Does not initialize any connections. |
-| `async_setup_entry` | `(hass, entry: ConfigEntry) → bool` | Config-entry setup hook called by HA when an entry is loaded. Ensures `hass.data[DOMAIN]` exists, then calls a placeholder `your_joule_library.connect_to_joule()` (not yet implemented) and stores the result under the entry ID. Returns `True`. |
-
-> **Note:** `async_setup_entry` currently references a non-existent `your_joule_library`. This is a stub that must be replaced with real `JouleBLEAPI` initialization.
+| `async_setup_entry` | `(hass, entry) → bool` | Creates a `JouleCoordinator`, calls `async_config_entry_first_refresh()` (raises `ConfigEntryNotReady` on failure), stores the coordinator in `hass.data[DOMAIN][entry.entry_id]`, then forwards setup to all four platforms. |
+| `async_unload_entry` | `(hass, entry) → bool` | Unloads all platforms, removes the coordinator from `hass.data`, and calls `coordinator.api.disconnect()`. |
 
 ---
 
-### `joule_ble.py` — BLE API Client (`JouleBLEAPI`)
+### `coordinator.py` — `JouleCoordinator`
 
-All methods are **synchronous** and perform blocking I/O. They must be called from a thread pool (via `hass.async_add_executor_job`) when used inside HA's async event loop.
+Single owner of the BLE connection. Entities read from `coordinator.data` and call coordinator methods for all control operations.
 
-| Method | Signature | What it does |
+**Internal state** (not read from device — tracked locally):
+
+| Attribute | Type | Default | Description |
+|---|---|---|---|
+| `_is_cooking` | `bool` | `False` | Whether a cook is in progress |
+| `_target_temperature` | `float` | `60.0` | Target temperature in **°C** |
+| `_cook_time_minutes` | `float` | `0.0` | Cook duration (0 = unlimited) |
+| `_temperature_unit` | `str` | `"°F"` | Display unit preference |
+
+**`coordinator.data` keys** (refreshed every 30 s):
+
+| Key | Type | Description |
 |---|---|---|
-| `__init__` | `(mac_address: str)` | Stores the device MAC address. Creates a `pygatt.GATTToolBackend` adapter instance. Sets `self.device = None` (not yet connected). |
-| `connect` | `() → None` | Starts the GATT adapter (`adapter.start()`), then connects to the Joule at the stored MAC address. Stores the connected device handle in `self.device`. Logs success or catches and logs `BLEError` on failure. |
-| `disconnect` | `() → None` | Disconnects the device if connected (`device.disconnect()`), then stops the adapter (`adapter.stop()`). Catches and logs `BLEError`. |
-| `set_temperature` | `(temperature: float) → None` | Converts target temperature from °C to centidegrees (`× 100`), encodes as a 2-byte little-endian integer, and writes to `TEMPERATURE_CHAR_UUID` on the device. |
-| `set_cook_time` | `(time_minutes: float) → None` | Converts cooking duration from minutes to seconds (`× 60`), encodes as a 4-byte little-endian integer, and writes to `TIME_CHAR_UUID`. |
-| `start_cooking` | `() → None` | Writes the byte `0x01` to `START_STOP_CHAR_UUID` to signal the device to begin cooking. |
-| `stop_cooking` | `() → None` | Writes the byte `0x00` to `START_STOP_CHAR_UUID` to signal the device to stop cooking. |
-| `get_current_temperature` | `() → float` | Reads raw bytes from `CURRENT_TEMP_CHAR_UUID`, interprets them as a little-endian integer representing centidegrees, divides by 100 to return °C as a float. |
+| `current_temperature` | `float` | Latest temperature read from device (°C) |
+| `is_cooking` | `bool` | Mirrors `_is_cooking` |
+| `target_temperature` | `float` | Mirrors `_target_temperature` (°C) |
+| `cook_time_minutes` | `float` | Mirrors `_cook_time_minutes` |
+| `temperature_unit` | `str` | Mirrors `_temperature_unit` |
 
-**BLE Characteristic UUIDs** (all currently placeholders):
+**Methods:**
+
+| Method | What it does |
+|---|---|
+| `_async_update_data()` | Polls the device via `ensure_connected()` + `get_current_temperature()`. Raises `UpdateFailed` on `JouleBLEError`, causing all `CoordinatorEntity` instances to go unavailable. |
+| `async_start_cooking(target_temperature, cook_time_minutes)` | Stores parameters, sends the BLE sequence (`set_temperature` → `set_cook_time` → `start_cooking`), sets `_is_cooking = True`, calls `async_refresh()`. |
+| `async_stop_cooking()` | Sends `stop_cooking()` over BLE, sets `_is_cooking = False`, calls `async_refresh()`. |
+| `async_set_target_temperature(value_celsius)` | Updates `_target_temperature` (°C) and refreshes. No BLE call. |
+| `async_set_cook_time(value)` | Updates `_cook_time_minutes` and refreshes. No BLE call. |
+| `async_set_temperature_unit(unit)` | Updates `_temperature_unit` and refreshes. No BLE call, no conversion of stored temperature. |
+
+> `async_refresh()` is used (not `async_request_refresh()`) because control actions require immediate state reflection. `async_request_refresh` is debounced and would delay the state update.
+
+---
+
+### `joule_ble.py` — `JouleBLEAPI`
+
+All methods are **synchronous** and must be called via `hass.async_add_executor_job`.
+
+| Method | What it does |
+|---|---|
+| `__init__(mac_address)` | Stores MAC address, creates a `pygatt.GATTToolBackend`, sets `self.device = None`. |
+| `ensure_connected()` | No-op if already connected. Otherwise starts the adapter and connects to the device. Raises `JouleBLEError` on failure. |
+| `disconnect()` | Disconnects the device and stops the adapter. |
+| `set_temperature(temperature_celsius)` | Converts °C × 100 → 2-byte LE int, writes to `TEMPERATURE_CHAR_UUID`. |
+| `set_cook_time(time_minutes)` | Converts minutes × 60 → 4-byte LE int (seconds), writes to `TIME_CHAR_UUID`. |
+| `start_cooking()` | Writes `0x01` to `START_STOP_CHAR_UUID`. |
+| `stop_cooking()` | Writes `0x00` to `START_STOP_CHAR_UUID`. |
+| `get_current_temperature()` | Reads `CURRENT_TEMP_CHAR_UUID`, decodes as LE centidegrees, returns `float` (°C). |
+
+**BLE Characteristic UUIDs** (all currently placeholders pending hardware verification):
 
 | Constant | Purpose |
 |---|---|
-| `JOULE_SERVICE_UUID` | The primary GATT service on the device |
+| `JOULE_SERVICE_UUID` | Primary GATT service |
 | `TEMPERATURE_CHAR_UUID` | Write: target temperature setpoint |
-| `TIME_CHAR_UUID` | Write: desired cook duration |
+| `TIME_CHAR_UUID` | Write: cook duration |
 | `START_STOP_CHAR_UUID` | Write: `0x01` = start, `0x00` = stop |
 | `CURRENT_TEMP_CHAR_UUID` | Read: current water temperature |
 
 ---
 
-### `sensor.py` — Temperature Sensor Entity (`JouleTemperatureSensor`)
+### `sensor.py` — `JouleTemperatureSensor`
 
-| Function / Property | What it does |
+| Method / Property | What it does |
 |---|---|
-| `async_setup_platform(hass, config, async_add_entities, discovery_info)` | Legacy YAML platform setup. Reads `mac_address` from the YAML config dict. Instantiates a `JouleTemperatureSensor` with that address and registers it with HA via `async_add_entities`. |
-| `__init__(mac_address)` | Creates a `JouleBLEAPI` instance, immediately calls `connect()` (blocking, on the event loop — a bug), and sets `self._temperature = None`. |
-| `name` *(property)* | Returns the static string `"Joule Current Temperature"`. |
-| `state` *(property)* | Returns the last-fetched temperature value (`self._temperature`), or `None` if not yet updated. |
-| `async_update()` | Called by HA to refresh state. Calls `JouleBLEAPI.get_current_temperature()` synchronously (blocking — a bug) and stores the result in `self._temperature`. |
+| `async_setup_entry(hass, entry, async_add_entities)` | Retrieves the coordinator from `hass.data`, instantiates `JouleTemperatureSensor`, registers it. |
+| `__init__(coordinator, entry)` | Sets `unique_id = f"{entry.entry_id}_current_temperature"`, configures device info. |
+| `native_value` *(property)* | Returns `coordinator.data["current_temperature"]` (°C). `None` if data is unavailable. |
+
+Static attributes: `device_class=TEMPERATURE`, `state_class=MEASUREMENT`, `unit=°C`.
 
 ---
 
-### `switch.py` — Cooking Control Switch (`JouleSousVideSwitch`)
+### `switch.py` — `JouleSousVideSwitch`
 
-| Function / Property | What it does |
+| Method / Property | What it does |
 |---|---|
-| `async_setup_platform(hass, config, async_add_entities, discovery_info)` | Legacy YAML platform setup. Reads `mac_address` from config, instantiates `JouleSousVideSwitch`, and registers it with HA. |
-| `__init__(mac_address)` | Sets initial state: `_is_on = False`, `_target_temperature = 60` (°C), `_cook_time_minutes = 0`. Creates a `JouleBLEAPI` instance and immediately calls `connect()` (blocking — a bug). |
-| `name` *(property)* | Returns the static string `"Joule Sous Vide"`. |
-| `is_on` *(property)* | Returns the cached `self._is_on` boolean. Does **not** query the device. |
-| `async_turn_on(**kwargs)` | Sends the full cook sequence over BLE: calls `set_temperature(_target_temperature)`, `set_cook_time(_cook_time_minutes)`, then `start_cooking()`. Sets `_is_on = True` and calls `async_update_ha_state()` to push the state change to HA. |
-| `async_turn_off(**kwargs)` | Calls `stop_cooking()` over BLE. Sets `_is_on = False` and calls `async_update_ha_state()`. |
-| `device_state_attributes` *(property)* | Returns a dict with `target_temperature` and `cook_time_minutes` as extra attributes visible in HA. |
-| `async_update()` | Reads the current temperature from BLE and logs it. Does **not** store the value or expose it as a state attribute. The comment says "add logic to alert when cooking is done" — this is unimplemented. |
+| `async_setup_entry(hass, entry, async_add_entities)` | Retrieves coordinator, instantiates and registers `JouleSousVideSwitch`. |
+| `__init__(coordinator, entry)` | Sets `unique_id = f"{entry.entry_id}_switch"`, configures device info. |
+| `is_on` *(property)* | Returns `coordinator.data["is_cooking"]`. |
+| `extra_state_attributes` *(property)* | Exposes `target_temperature` (°C) and `cook_time_minutes` from `coordinator.data`. |
+| `async_turn_on(**kwargs)` | Reads `target_temperature` and `cook_time_minutes` from `coordinator.data`, calls `coordinator.async_start_cooking(temp_c, time)`. |
+| `async_turn_off(**kwargs)` | Calls `coordinator.async_stop_cooking()`. |
 
 ---
 
-## Current Architecture (v0.3)
+### `number.py` — `JouleTargetTemperatureNumber` and `JouleCookTimeNumber`
 
-All issues from the original prototype have been resolved. The integration now follows standard HA patterns:
+#### `JouleTargetTemperatureNumber`
 
-| Issue | Resolution |
+| Method / Property | What it does |
 |---|---|
-| **Blocking I/O in async context** | All `JouleBLEAPI` calls go through `hass.async_add_executor_job()` in the coordinator. |
-| **No DataUpdateCoordinator** | `coordinator.py` — `JouleCoordinator` owns the single BLE connection and shares data with all entities. |
-| **`async_setup_entry` was a stub** | `__init__.py` rewritten: creates coordinator, raises `ConfigEntryNotReady` on failure. |
-| **No `config_flow.py`** | Added — prompts for MAC address and validates via a real BLE connection attempt. |
-| **No `const.py`** | Added — `DOMAIN`, BLE UUIDs, and defaults defined once and imported everywhere. |
-| **No unique IDs on entities** | Both entities now set `_attr_unique_id` using `entry.entry_id`. |
-| **BLE connect in constructor** | Removed — `ensure_connected()` is called lazily inside `_async_update_data`. |
-| **`async_update` in switch incomplete** | Removed — switch is a `CoordinatorEntity`; state comes from `coordinator.data`. |
-| **`requirements` mismatch** | Fixed — `manifest.json` now lists `pygatt` and adds `config_flow: true`, `iot_class: local_polling`. |
+| `__init__(coordinator, entry)` | Sets `unique_id = f"{entry.entry_id}_target_temperature"`. |
+| `_current_unit()` | Returns `coordinator.data["temperature_unit"]` (°F by default). |
+| `native_unit_of_measurement` *(property)* | Returns the current display unit (°F or °C). |
+| `native_min_value` *(property)* | Returns 32.0 (°F) or 0.0 (°C) depending on current unit. |
+| `native_max_value` *(property)* | Returns 212.0 (°F) or 100.0 (°C) depending on current unit. |
+| `native_step` *(property)* | Returns 1.0 (°F) or 0.5 (°C). |
+| `native_value` *(property)* | Reads `coordinator.data["target_temperature"]` (°C) and converts to the display unit for presentation. |
+| `async_set_native_value(value)` | Converts the input from the display unit to °C, calls `coordinator.async_set_target_temperature(value_celsius)`. |
 
-### One Remaining Limitation
+#### `JouleCookTimeNumber`
 
-Cooking state (`is_cooking`) is tracked internally by the coordinator rather than read back from the device. This means if the device is turned on/off by a means other than Home Assistant (e.g. the ChefSteps app), HA's state will be stale until the next manual interaction. This is a limitation of the BLE protocol — the `START_STOP_CHAR_UUID` characteristic is write-only.
+Static attributes: `unit="min"`, `min=0`, `max=1440`, `step=1`. No unit conversion needed.
+
+| Method / Property | What it does |
+|---|---|
+| `native_value` *(property)* | Returns `coordinator.data["cook_time_minutes"]`. |
+| `async_set_native_value(value)` | Calls `coordinator.async_set_cook_time(value)` directly. |
+
+---
+
+### `select.py` — `JouleTemperatureUnitSelect`
+
+| Method / Property | What it does |
+|---|---|
+| `__init__(coordinator, entry)` | Sets `unique_id = f"{entry.entry_id}_temperature_unit"`. Options: `["°F", "°C"]`. |
+| `current_option` *(property)* | Returns `coordinator.data["temperature_unit"]`. |
+| `async_select_option(option)` | Calls `coordinator.async_set_temperature_unit(option)`. |
+
+---
+
+### `config_flow.py` — `JouleConfigFlow`
+
+| Method | What it does |
+|---|---|
+| `async_step_user(user_input)` | Shows MAC address input form. On submit, attempts `ensure_connected()` + `disconnect()` to validate the address. Calls `async_set_unique_id(mac)` and aborts if already configured. Creates the config entry on success. |
 
 ---
 
@@ -157,13 +282,15 @@ Cooking state (`is_cooking`) is tracked internally by the coordinator rather tha
 
 ```
 custom_components/joule_sous_vide/
-├── __init__.py           # Entry setup / unload
-├── config_flow.py        # UI configuration (MAC address input)
-├── coordinator.py        # JouleCoordinator — BLE connection owner
-├── joule_ble.py          # JouleBLEAPI — synchronous BLE I/O
-├── sensor.py             # JouleTemperatureSensor (CoordinatorEntity)
-├── switch.py             # JouleSousVideSwitch (CoordinatorEntity)
-├── const.py              # DOMAIN, UUIDs, defaults
+├── __init__.py           # Entry setup / unload; registers 4 platforms
+├── config_flow.py        # UI configuration (MAC address input + BLE validation)
+├── coordinator.py        # JouleCoordinator — single BLE connection owner
+├── joule_ble.py          # JouleBLEAPI — synchronous BLE I/O (pygatt)
+├── number.py             # Target Temperature + Cook Time number entities
+├── select.py             # Temperature Unit select entity
+├── sensor.py             # Current Temperature sensor entity
+├── switch.py             # Sous Vide switch entity
+├── const.py              # DOMAIN, UUIDs, defaults, temperature bounds
 ├── manifest.json         # Integration metadata
 ├── strings.json          # Config flow UI strings
 └── translations/
@@ -172,27 +299,11 @@ custom_components/joule_sous_vide/
 
 ---
 
-## Implemented Architecture
+## Architectural Constraints and Known Limitations
 
-```mermaid
-graph TD
-    HA[Home Assistant Core] -->|async_setup_entry| INIT[__init__.py]
-    INIT -->|creates| COORD[coordinator.py\nJouleCoordinator]
-    INIT -->|forward setup| SENSOR[sensor.py]
-    INIT -->|forward setup| SWITCH[switch.py]
-
-    COORD -->|async_add_executor_job| BLE[joule_ble.py\nJouleBLEAPI]
-    BLE -->|pygatt GATTToolBackend| JOULE[(Joule Device\nBLE / GATT)]
-
-    SENSOR -->|CoordinatorEntity| COORD
-    SWITCH -->|CoordinatorEntity| COORD
-    SWITCH -->|async_start/stop_cooking| COORD
-
-    CFG[config_flow.py] -->|validates MAC via BLE| BLE
-    CFG -->|creates entry| INIT
-
-    CONST[const.py] -.->|DOMAIN, UUIDs, defaults| INIT
-    CONST -.-> COORD
-    CONST -.-> BLE
-    CONST -.-> CFG
-```
+| Constraint | Detail |
+|---|---|
+| **Cooking state is write-only** | `is_cooking` is tracked internally. If the device is stopped from the ChefSteps app or loses power, HA will not detect the change automatically. |
+| **BLE UUIDs are unverified** | All GATT characteristic UUIDs are placeholders pending confirmation against real hardware. |
+| **One BLE connection at a time** | `pygatt` holds a single connection per `JouleBLEAPI` instance. The ChefSteps app must be closed while this integration is active. |
+| **Temperature unit is not persisted** | `_temperature_unit` is in-memory only and resets to `"°F"` on HA restart. Persistence across restarts requires storing the value in a `ConfigEntry` options or a `RestoreEntity`. |
