@@ -20,8 +20,10 @@ All communication with the physical device goes exclusively through `JouleBLEAPI
 
 ```mermaid
 graph TD
-    HA[Home Assistant Core] -->|async_setup_entry| INIT[__init__.py]
+    HA[Home Assistant Core] -->|async_setup| INIT[__init__.py]
+    HA -->|async_setup_entry| INIT
 
+    INIT -->|registers static path| HTTP[hass.http\n/joule_sous_vide/joule-card.js]
     INIT -->|creates + first refresh| COORD[coordinator.py\nJouleCoordinator]
     INIT -->|forward_entry_setups| NUMBER[number.py]
     INIT -->|forward_entry_setups| SELECT[select.py]
@@ -50,6 +52,9 @@ graph TD
     CONST -.-> BLE
     CONST -.-> NUMBER
     CONST -.-> CFG
+
+    CARD[www/joule-card.js\ncustom:joule-sous-vide-card] -->|callService| HA
+    HTTP -.->|serves| CARD
 ```
 
 ---
@@ -139,6 +144,7 @@ sequenceDiagram
 
 | Function | Signature | What it does |
 |---|---|---|
+| `async_setup` | `(hass, config) → bool` | Registers `www/joule-card.js` as a static HTTP resource at `/joule_sous_vide/joule-card.js` via `hass.http.async_register_static_paths`. No-ops (returns `True`) if `hass.http` is `None` (e.g. in tests). |
 | `async_setup_entry` | `(hass, entry) → bool` | Creates a `JouleCoordinator`, calls `async_config_entry_first_refresh()` (raises `ConfigEntryNotReady` on failure), stores the coordinator in `hass.data[DOMAIN][entry.entry_id]`, then forwards setup to all four platforms. |
 | `async_unload_entry` | `(hass, entry) → bool` | Unloads all platforms, removes the coordinator from `hass.data`, and calls `coordinator.api.disconnect()`. |
 
@@ -287,7 +293,7 @@ Static attributes: `unit="min"`, `min=0`, `max=1440`, `step=1`. No unit conversi
 │   └── release.yml     # Packages and publishes a release on v* tag push
 hacs.json               # HACS custom repository manifest
 custom_components/joule_sous_vide/
-├── __init__.py           # Entry setup / unload; registers 4 platforms
+├── __init__.py           # async_setup (static path) + entry setup / unload; 4 platforms
 ├── config_flow.py        # UI configuration (MAC address input + BLE validation)
 ├── coordinator.py        # JouleCoordinator — single BLE connection owner
 ├── joule_ble.py          # JouleBLEAPI — synchronous BLE I/O (pygatt)
@@ -298,8 +304,10 @@ custom_components/joule_sous_vide/
 ├── const.py              # DOMAIN, UUIDs, defaults, temperature bounds
 ├── manifest.json         # Integration metadata
 ├── strings.json          # Config flow UI strings
-└── translations/
-    └── en.json           # English translations
+├── translations/
+│   └── en.json           # English translations
+└── www/
+    └── joule-card.js     # custom:joule-sous-vide-card Lovelace card
 ```
 
 ---

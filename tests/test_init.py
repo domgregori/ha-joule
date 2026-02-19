@@ -1,5 +1,6 @@
 """Tests for integration setup and teardown (__init__.py)."""
-from unittest.mock import MagicMock
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from homeassistant.config_entries import ConfigEntryState
@@ -9,6 +10,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.joule_sous_vide.const import DOMAIN
 from custom_components.joule_sous_vide.coordinator import JouleCoordinator
 from custom_components.joule_sous_vide.joule_ble import JouleBLEError
+from custom_components.joule_sous_vide import LOVELACE_CARD_URL
 
 from .conftest import TEST_ENTRY_ID
 
@@ -98,6 +100,39 @@ async def test_unload_entry_removes_coordinator_from_hass_data(
     await hass.async_block_till_done()
 
     assert TEST_ENTRY_ID not in hass.data.get(DOMAIN, {})
+
+
+async def test_async_setup_registers_static_path_when_http_available(
+    hass: HomeAssistant,
+) -> None:
+    """async_setup registers the Lovelace card JS at LOVELACE_CARD_URL."""
+    from custom_components.joule_sous_vide import async_setup
+
+    mock_http = MagicMock()
+    mock_http.async_register_static_paths = AsyncMock()
+
+    with patch.object(hass, "http", mock_http):
+        result = await async_setup(hass, {})
+
+    assert result is True
+    mock_http.async_register_static_paths.assert_called_once()
+    args = mock_http.async_register_static_paths.call_args[0][0]
+    assert len(args) == 1
+    static_config = args[0]
+    assert static_config.url_path == LOVELACE_CARD_URL
+    assert static_config.path.endswith("joule-card.js")
+
+
+async def test_async_setup_skips_static_path_when_http_unavailable(
+    hass: HomeAssistant,
+) -> None:
+    """async_setup returns True even when hass.http is None (e.g. in tests)."""
+    from custom_components.joule_sous_vide import async_setup
+
+    with patch.object(hass, "http", None):
+        result = await async_setup(hass, {})
+
+    assert result is True
 
 
 async def test_unload_entry_state(

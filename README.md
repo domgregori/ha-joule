@@ -129,6 +129,7 @@ For full troubleshooting steps, see **[docs/troubleshooting.md](docs/troubleshoo
 - [How To: Start a Cooking Session](docs/how-to-start-cooking.md)
 - [How To: Monitor Temperature](docs/how-to-monitor-temperature.md)
 - [How To: Automate Your Joule](docs/how-to-automate.md)
+- [How To: Use the Custom Lovelace Card](docs/how-to-lovelace-card.md)
 - [Entity Reference](docs/reference-entities.md)
 - [Troubleshooting](docs/troubleshooting.md)
 
@@ -142,9 +143,9 @@ These are the next planned improvements, in priority order:
 
 Two `number` entities — **Target Temperature** and **Cook Time** (0–1440 min) — let you set cooking parameters from the dashboard or an automation. When the Sous Vide switch is turned on it reads the current values and passes them to the device. A **Temperature Unit** `select` entity (default °F) controls whether the target temperature is displayed and entered in °F or °C; the device always receives °C internally. The unit preference is persisted to the config entry and survives Home Assistant restarts.
 
-### 2 — Custom Lovelace card
+### ~~2 — Custom Lovelace card~~ ✅ Done
 
-A dedicated dashboard card that shows the current water temperature, the target temperature, a start/stop button, and a countdown timer in one place. This would replace the current approach of arranging individual entities manually on a dashboard.
+A `custom:joule-sous-vide-card` Lovelace card that shows current temperature, target temperature (with +/− steppers), cook time (with +/− steppers), a °F/°C unit toggle, and a Start/Stop button — all in one panel. The card is served automatically by the integration at `/joule_sous_vide/joule-card.js`; add it as a Lovelace resource and it appears in the card picker. See [How To: Use the Custom Lovelace Card](docs/how-to-lovelace-card.md).
 
 ### ~~3 — HACS integration and install workflow~~ ✅ Done
 
