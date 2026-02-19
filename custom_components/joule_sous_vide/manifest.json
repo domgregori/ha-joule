@@ -1,8 +1,8 @@
 {
   "domain": "joule_sous_vide",
   "name": "ChefSteps Joule Sous Vide",
-  "version": "0.3",
-  "documentation": "https://example.com",
+  "version": "0.4.0",
+  "documentation": "https://github.com/acato/ha-joule",
   "dependencies": [],
   "codeowners": ["@catomaior"],
   "requirements": ["pygatt"],
