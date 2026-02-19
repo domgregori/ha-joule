@@ -278,9 +278,14 @@ Static attributes: `unit="min"`, `min=0`, `max=1440`, `step=1`. No unit conversi
 
 ---
 
-## Current File Structure
+## Repository Structure
 
 ```
+.github/
+├── workflows/
+│   ├── ci.yml          # Runs tests on push/PR to main
+│   └── release.yml     # Packages and publishes a release on v* tag push
+hacs.json               # HACS custom repository manifest
 custom_components/joule_sous_vide/
 ├── __init__.py           # Entry setup / unload; registers 4 platforms
 ├── config_flow.py        # UI configuration (MAC address input + BLE validation)

@@ -1,17 +1,20 @@
 # Getting Started with Joule Sous Vide for Home Assistant
 
-This integration connects your **ChefSteps Joule Sous Vide** circulator to Home Assistant over Bluetooth. Once set up, you can monitor the water temperature and control the cooking cycle directly from your HA dashboard, automations, and voice assistants.
+This integration connects your **ChefSteps Joule Sous Vide** circulator to Home Assistant over Bluetooth. Once set up, you can monitor the water temperature, set your target temperature, and control the cooking cycle directly from your HA dashboard, automations, and voice assistants.
 
 ---
 
 ## What You Get
 
-After setup, Home Assistant creates two things for your Joule:
+After setup, Home Assistant creates five entities for your Joule, all under a single **ChefSteps Joule Sous Vide** device:
 
-| What | What it does |
-|---|---|
-| **Current Temperature** sensor | Shows the live water temperature in °C, updated every 30 seconds |
-| **Sous Vide** switch | Turns the cooking cycle on and off |
+| Entity | Type | What it does |
+|---|---|---|
+| **Current Temperature** | Sensor | Live water temperature, updated every 30 seconds |
+| **Sous Vide** | Switch | Starts and stops the cooking cycle |
+| **Target Temperature** | Number | The temperature to heat to (displayed in °F or °C) |
+| **Cook Time** | Number | How long to cook in minutes (0 = no time limit) |
+| **Temperature Unit** | Select | Choose °F or °C for the Target Temperature display |
 
 ---
 
@@ -20,7 +23,6 @@ After setup, Home Assistant creates two things for your Joule:
 Make sure you have:
 
 - **Home Assistant** 2024.2 or newer
-- **Python** 3.12 or newer (already met if you run a standard HA installation)
 - Your **Joule device** plugged in and powered on
 - Your Home Assistant host within **~10 metres** of the Joule (Bluetooth range)
 - The **Bluetooth MAC address** of your Joule — see [Finding Your Joule's MAC Address](#finding-your-joules-mac-address) below
@@ -31,14 +33,25 @@ Make sure you have:
 
 ## Installation
 
-This integration is installed manually by copying files into your Home Assistant configuration.
+### Method 1 — HACS (recommended)
 
-### Step 1 — Copy the integration files
+[HACS](https://hacs.xyz) is the Home Assistant Community Store. It lets you install and update custom integrations with one click.
+
+1. Make sure [HACS is installed](https://hacs.xyz/docs/use/).
+2. In Home Assistant, go to **HACS** → **Integrations**.
+3. Click the **⋮** menu in the top right → **Custom repositories**.
+4. Add `https://github.com/acato/ha-joule` and set the category to **Integration**. Click **Add**.
+5. Search for **ChefSteps Joule Sous Vide** and click **Download**.
+6. **Restart Home Assistant.**
+
+> ✅ After restarting, continue to [Step 2 — Add the Integration](#step-2--add-the-integration).
+
+---
+
+### Method 2 — Manual installation
 
 1. Download or clone this repository.
-2. Copy the `custom_components/joule_sous_vide/` folder into the `custom_components/` folder inside your Home Assistant configuration directory.
-
-Your configuration directory structure should look like this:
+2. Copy the `custom_components/joule_sous_vide/` folder into the `custom_components/` folder inside your Home Assistant configuration directory (the folder that contains `configuration.yaml`).
 
 ```
 config/
@@ -52,7 +65,7 @@ config/
 
 3. **Restart Home Assistant.**
 
-> ✅ After restarting, the integration will be available to add.
+> ✅ After restarting, continue to [Step 2 — Add the Integration](#step-2--add-the-integration).
 
 ---
 
@@ -84,12 +97,15 @@ Home Assistant will now attempt to connect to your Joule over Bluetooth. This ca
 
 1. Go to **Settings** → **Devices & Services**.
 2. Find **ChefSteps Joule Sous Vide** and click on it.
-3. You should see two entities:
+3. You should see five entities:
 
-| Entity | Example name |
+| Entity | Example entity ID |
 |---|---|
-| Current Temperature (sensor) | `sensor.joule_d4_9a_20_01_f3_8b_current_temperature` |
-| Sous Vide (switch) | `switch.joule_d4_9a_20_01_f3_8b_sous_vide` |
+| Current Temperature | `sensor.joule_d4_9a_20_01_f3_8b_current_temperature` |
+| Sous Vide | `switch.joule_d4_9a_20_01_f3_8b_sous_vide` |
+| Target Temperature | `number.joule_d4_9a_20_01_f3_8b_target_temperature` |
+| Cook Time | `number.joule_d4_9a_20_01_f3_8b_cook_time` |
+| Temperature Unit | `select.joule_d4_9a_20_01_f3_8b_temperature_unit` |
 
 > ✅ You're ready to go! Continue to [How To: Start a Cooking Session](how-to-start-cooking.md).
 

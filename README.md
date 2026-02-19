@@ -31,34 +31,28 @@ Once set up, Home Assistant creates five entities for your Joule, all under a si
 
 ## Installation
 
-### 1 — Copy the integration files
+### Method 1 — HACS (recommended)
 
-1. Download or clone this repository.
-2. Copy the `custom_components/joule_sous_vide/` folder into the `custom_components/` folder inside your HA configuration directory (the folder that contains `configuration.yaml`).
+[HACS](https://hacs.xyz) is the Home Assistant Community Store. It handles installation and updates automatically.
 
-```
-config/
-└── custom_components/
-    └── joule_sous_vide/
-        ├── __init__.py
-        ├── config_flow.py
-        ├── coordinator.py
-        └── ...
-```
+1. Make sure [HACS is installed](https://hacs.xyz/docs/use/).
+2. In Home Assistant, go to **HACS** → **Integrations**.
+3. Click **⋮** → **Custom repositories**, add `https://github.com/acato/ha-joule`, category **Integration**.
+4. Search for **ChefSteps Joule Sous Vide** and click **Download**.
+5. **Restart Home Assistant.**
 
-3. **Restart Home Assistant.**
+### Method 2 — Manual
 
-### 2 — Add the integration
+1. Copy the `custom_components/joule_sous_vide/` folder into the `custom_components/` directory inside your HA configuration directory.
+2. **Restart Home Assistant.**
 
-1. Go to **Settings** → **Devices & Services**.
-2. Click **+ Add Integration**.
-3. Search for **Joule** and select **ChefSteps Joule Sous Vide**.
+### Add the integration
 
-### 3 — Enter your MAC address
+1. Go to **Settings** → **Devices & Services** → **+ Add Integration**.
+2. Search for **Joule** and select **ChefSteps Joule Sous Vide**.
+3. Enter your Joule's Bluetooth MAC address (`AA:BB:CC:DD:EE:FF`) and click **Submit**.
 
-Enter your Joule's Bluetooth MAC address in the format `AA:BB:CC:DD:EE:FF` and click **Submit**. Home Assistant will connect to the device — this can take up to 30 seconds.
-
-> ✅ On success, a **"Joule AA:BB:CC:DD:EE:FF"** device appears in Devices & Services with its two entities ready to use.
+> ✅ On success, a **"Joule AA:BB:CC:DD:EE:FF"** device appears with five entities ready to use.
 
 ---
 
@@ -152,9 +146,9 @@ Two `number` entities — **Target Temperature** and **Cook Time** (0–1440 min
 
 A dedicated dashboard card that shows the current water temperature, the target temperature, a start/stop button, and a countdown timer in one place. This would replace the current approach of arranging individual entities manually on a dashboard.
 
-### 3 — HACS integration and install workflow
+### ~~3 — HACS integration and install workflow~~ ✅ Done
 
-Package the integration for the [Home Assistant Community Store (HACS)](https://hacs.xyz) so users can install and update it in one click without copying files manually. This involves adding a `hacs.json` manifest, a GitHub Actions release workflow that tags versions and publishes a release, and submitting the repository for HACS default inclusion.
+Added `hacs.json`, a GitHub Actions release workflow (triggered by version tags, validates `manifest.json` version, publishes a zip as a GitHub Release), and a CI workflow that runs the test suite on every push. The integration can now be installed via HACS as a custom repository.
 
 ---
 

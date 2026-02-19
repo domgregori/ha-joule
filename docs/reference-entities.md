@@ -22,13 +22,13 @@ All entities belong to a single device:
 **Entity ID:** `sensor.joule_[mac]_current_temperature`
 **Type:** Sensor
 
-This sensor shows the current water temperature inside your Joule bath, in degrees Celsius.
+Shows the current water temperature inside your Joule bath, in degrees Celsius.
 
 ### Properties
 
 | Property | Value |
 |---|---|
-| Unit | °C (degrees Celsius) |
+| Unit | °C |
 | Update interval | Every 30 seconds |
 | Device class | Temperature |
 | State class | Measurement |
@@ -37,15 +37,9 @@ This sensor shows the current water temperature inside your Joule bath, in degre
 
 | State | Meaning |
 |---|---|
-| A number (e.g. `58.3`) | The current water temperature in °C |
-| **Unavailable** | HA cannot reach the Joule over Bluetooth. It will reconnect automatically once the device is in range and powered on. |
-| **Unknown** | No reading has been received yet since HA started. Wait up to 30 seconds. |
-
-### Notes
-
-- The temperature is read from the Joule device via Bluetooth. If the device is mid-heatup, the reading reflects the current bath temperature, not the target.
-- You can use this sensor in the **History** panel to confirm a bath held a steady temperature over a long cook.
-- The sensor is suitable for use in automations and Lovelace cards as a standard numeric state.
+| A number (e.g. `58.3`) | Current water temperature in °C |
+| **Unavailable** | HA cannot reach the Joule. Reconnects automatically once in range and powered on. |
+| **Unknown** | No reading received yet since HA started. Wait up to 30 seconds. |
 
 ---
 
@@ -54,50 +48,36 @@ This sensor shows the current water temperature inside your Joule bath, in degre
 **Entity ID:** `switch.joule_[mac]_sous_vide`
 **Type:** Switch
 
-This switch starts and stops the Joule cooking cycle.
+Starts and stops the Joule cooking cycle.
 
 ### States
 
 | State | Meaning |
 |---|---|
 | **On** | The Joule is actively heating and circulating water |
-| **Off** | The Joule is idle (not heating) |
+| **Off** | The Joule is idle |
 | **Unavailable** | HA cannot reach the Joule over Bluetooth |
 
 ### State Attributes
 
-These extra details are shown alongside the switch state and can be used in templates and automations:
-
-| Attribute | Unit | Default | Description |
-|---|---|---|---|
-| `target_temperature` | °C | 60.0 | The temperature the Joule was last instructed to heat to |
-| `cook_time_minutes` | minutes | 0.0 | The cook duration the Joule was last instructed to use. `0` means no time limit. |
-
-**Example — reading attributes in a template:**
-
-```yaml
-{{ state_attr('switch.joule_d4_9a_20_01_f3_8b_sous_vide', 'target_temperature') }}
-```
+| Attribute | Unit | Description |
+|---|---|---|
+| `target_temperature` | °C | The temperature sent to the device when cooking last started |
+| `cook_time_minutes` | min | The cook duration sent to the device when cooking last started |
 
 ### Behaviour
 
-- **Turning on:** HA sends the current `target_temperature` (default 60°C) and `cook_time_minutes` (default 0, meaning unlimited) to the Joule, then starts the cooking cycle.
-- **Turning off:** HA sends a stop command to the Joule immediately.
-- **State tracking:** The on/off state is tracked by Home Assistant, not read back from the device. If you start or stop the Joule using the ChefSteps app or the physical device, Home Assistant will not automatically detect this change.
-
-> ⚠️ **Current limitation:** In v0.3, the target temperature and cook time can only be changed by the integration internally (they default to 60°C and unlimited). Custom temperature control through the HA UI is planned for a future version.
+- **Turning on:** reads the current **Target Temperature** and **Cook Time** values and sends them to the device, then starts the cooking cycle.
+- **Turning off:** sends a stop command to the device immediately.
+- **State tracking:** tracked by HA internally, not read back from the device. If you stop the Joule from the ChefSteps app, HA will not detect this automatically.
 
 ### Services
-
-The switch responds to standard HA switch services:
 
 | Service | What it does |
 |---|---|
 | `switch.turn_on` | Starts the cooking cycle |
 | `switch.turn_off` | Stops the cooking cycle |
-| `switch.toggle` | Starts cooking if off; stops if on |
-
-**Example — calling the service from an automation action:**
+| `switch.toggle` | Starts if off; stops if on |
 
 ```yaml
 service: switch.turn_on
@@ -107,15 +87,115 @@ target:
 
 ---
 
+## Target Temperature
+
+**Entity ID:** `number.joule_[mac]_target_temperature`
+**Type:** Number
+
+Sets the water temperature the Joule will heat to when the Sous Vide switch is turned on.
+
+### Properties
+
+| Property | Value |
+|---|---|
+| Default | 140 °F (60 °C) |
+| Range (°F) | 32 – 212 °F |
+| Range (°C) | 0 – 100 °C |
+| Step (°F) | 1 °F |
+| Step (°C) | 0.5 °C |
+| Display unit | Controlled by the **Temperature Unit** select entity |
+
+### Behaviour
+
+- The value is stored in Home Assistant. **Changing it does not affect a cook already in progress** — the new value takes effect the next time the switch is turned on.
+- The device always receives the temperature in °C regardless of the display unit.
+
+### Services
+
+```yaml
+service: number.set_value
+target:
+  entity_id: number.joule_d4_9a_20_01_f3_8b_target_temperature
+data:
+  value: 140
+```
+
+---
+
+## Cook Time
+
+**Entity ID:** `number.joule_[mac]_cook_time_minutes`
+**Type:** Number
+
+Sets how long the Joule will cook when the Sous Vide switch is turned on.
+
+### Properties
+
+| Property | Value |
+|---|---|
+| Unit | minutes |
+| Default | 0 (no time limit) |
+| Range | 0 – 1440 minutes (24 hours) |
+| Step | 1 minute |
+
+### Behaviour
+
+- **0** means no time limit — the Joule will run until you turn it off manually.
+- Changing this value does not affect a cook already in progress.
+
+### Services
+
+```yaml
+service: number.set_value
+target:
+  entity_id: number.joule_d4_9a_20_01_f3_8b_cook_time_minutes
+data:
+  value: 120
+```
+
+---
+
+## Temperature Unit
+
+**Entity ID:** `select.joule_[mac]_temperature_unit`
+**Type:** Select
+
+Controls whether the **Target Temperature** entity displays and accepts values in °F or °C.
+
+### Properties
+
+| Property | Value |
+|---|---|
+| Options | °F, °C |
+| Default | °F |
+| Persisted | Yes — survives Home Assistant restarts |
+
+### Behaviour
+
+- Changing this entity updates the display unit and the min/max range of the Target Temperature entity immediately.
+- The stored temperature value in °C is not changed when you switch units — only the display converts.
+- The Joule device always receives °C over Bluetooth regardless of this setting.
+
+### Services
+
+```yaml
+service: select.select_option
+target:
+  entity_id: select.joule_d4_9a_20_01_f3_8b_temperature_unit
+data:
+  option: "°C"
+```
+
+---
+
 ## Customising Entity Names
 
-You can rename both entities to something easier to say or remember:
+You can rename any entity to something easier to say or remember:
 
 1. Go to **Settings** → **Devices & Services** → your Joule device.
 2. Click the entity you want to rename.
 3. Click the **pencil icon** next to the entity name.
-4. Type a new name (e.g. "Water Bath Temperature" or "Sous Vide Cooker").
-5. Click **Update**.
+4. Type a new name and click **Update**.
 
 > ✅ The new name will be used across dashboards, automations, and voice assistants.
 

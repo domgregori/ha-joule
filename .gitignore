@@ -13,6 +13,9 @@ htmlcov/
 # macOS
 .DS_Store
 
+# Generated documents
+*.docx
+
 # Local tooling
 .claude/
 .vs/
