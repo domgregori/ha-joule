@@ -1,24 +1,26 @@
-# Advanced: Finding the Joule's BLE GATT UUIDs
+# Advanced: Joule BLE GATT UUIDs
 
 **Audience:** Advanced users comfortable with Bluetooth tools and/or Android developer options.
 
-The integration uses five BLE GATT characteristic UUIDs to communicate with the Joule. These are currently placeholders in `const.py` pending confirmation against real hardware. This guide explains how to discover the correct values for your device.
+## Known UUIDs
+
+The Joule's BLE UUIDs have been reverse-engineered from the [chromeJoule](https://github.com/li-dennis/chromeJoule/blob/master/src/constants.ts) project and are populated in `const.py`:
+
+| Constant in `const.py` | UUID | Purpose |
+|---|---|---|
+| `JOULE_SERVICE_UUID` | `700b4321-9836-4383-a2b2-31a9098d1473` | Primary GATT service |
+| `WRITE_CHAR_UUID` | `700b4322-9836-4383-a2b2-31a9098d1473` | Write: send protobuf commands |
+| `READ_CHAR_UUID` | `700b4323-9836-4383-a2b2-31a9098d1473` | Read: receive protobuf responses |
+| `SUBSCRIBE_CHAR_UUID` | `700b4325-9836-4383-a2b2-31a9098d1473` | Notify: async notifications |
+| `FILE_CHAR_UUID` | `700b4326-9836-4383-a2b2-31a9098d1473` | File transfer (firmware) |
+
+The Joule uses **protobuf-encoded messages** (StreamMessage wrappers via `base.proto` / `remote.proto`) over a single service. All commands go through `WRITE_CHAR_UUID`; responses come back on `READ_CHAR_UUID` or `SUBSCRIBE_CHAR_UUID`.
 
 ---
 
 ## Background
 
 The Joule communicates over **Bluetooth Low Energy (BLE)** using the **GATT** (Generic Attribute Profile) protocol. Every BLE device exposes a tree of **services**, each containing **characteristics** — the actual data endpoints you read from or write to. Each characteristic has a globally unique identifier: a **UUID** (e.g. `6e400002-b5a3-f393-e0a9-e50e24dcca9e`).
-
-The integration needs five of these:
-
-| Constant in `const.py` | Purpose |
-|---|---|
-| `JOULE_SERVICE_UUID` | Primary GATT service the Joule advertises |
-| `TEMPERATURE_CHAR_UUID` | Write: target temperature setpoint (centidegrees, 2-byte LE) |
-| `TIME_CHAR_UUID` | Write: cook duration (seconds, 4-byte LE) |
-| `START_STOP_CHAR_UUID` | Write: `0x01` = start, `0x00` = stop |
-| `CURRENT_TEMP_CHAR_UUID` | Read: current water temperature (centidegrees, 2-byte LE) |
 
 ---
 
@@ -45,12 +47,13 @@ The integration needs five of these:
 
 ### What to look for
 
-- A characteristic with **Write** property and a value that changes when you set a temperature in the ChefSteps app → likely `TEMPERATURE_CHAR_UUID`
-- A characteristic with **Read** or **Notify** that changes as the water heats up → likely `CURRENT_TEMP_CHAR_UUID`
-- A characteristic that changes when you press Start/Stop → likely `START_STOP_CHAR_UUID`
-- Characteristics are grouped under a parent **service** UUID → that is `JOULE_SERVICE_UUID`
+- The service `700b4321-9836-4383-a2b2-31a9098d1473` should appear with four characteristics (`...4322`, `...4323`, `...4325`, `...4326`)
+- `...4322` (Write) — write protobuf commands here
+- `...4323` (Read) — read protobuf responses here
+- `...4325` (Notify) — subscribe for async protobuf notifications
+- `...4326` (Write Without Response) — used for file/firmware transfers
 
-nRF Connect alone tells you the UUIDs. To confirm the **byte encoding** (how temperature values are packed), use Method 2.
+nRF Connect confirms the UUIDs match the values in `const.py`. To understand the **protobuf encoding** (how commands are packed), use Method 2.
 
 ---
 
@@ -150,20 +153,14 @@ Look for a class or constants file with names like `JouleGattAttributes`, `BleCo
 
 ---
 
-## Updating the Integration
+## Next Step: Protobuf Decoding
 
-Once you have the confirmed UUIDs, replace the placeholders in `custom_components/joule_sous_vide/const.py` (lines 34–40):
+The UUIDs are now populated in `const.py`. The remaining challenge is implementing the **protobuf message encoding/decoding**. The Joule protocol uses Google Protocol Buffers (`base.proto` / `remote.proto`) to serialize all commands and responses.
 
-```python
-# BLE GATT characteristic UUIDs
-JOULE_SERVICE_UUID: Final       = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-TEMPERATURE_CHAR_UUID: Final    = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-TIME_CHAR_UUID: Final           = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-START_STOP_CHAR_UUID: Final     = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-CURRENT_TEMP_CHAR_UUID: Final   = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-```
-
-If the byte encoding in `joule_ble.py` differs from what the sniff reveals (e.g. temperature is encoded differently), update the relevant methods in `joule_ble.py` accordingly — see `set_temperature()` (line 59), `set_cook_time()` (line 70), and `get_current_temperature()` (line 95).
+Key resources for the protobuf layer:
+- [JouleUWP JOULE_PROTOCOL.md](https://github.com/mitchcapper/JouleUWP/blob/master/JOULE_PROTOCOL.md) — protocol documentation
+- [chromeJoule](https://github.com/li-dennis/chromeJoule) — working JavaScript implementation using CirculatorSDK
+- Android HCI snoop logs (Method 2 above) — capture raw protobuf bytes for analysis
 
 If you have confirmed UUIDs, please open a pull request or file an issue at [github.com/acato/ha-joule](https://github.com/acato/ha-joule/issues) — this will help all users of the integration.
 

@@ -10,10 +10,9 @@ import logging
 import pygatt
 
 from .const import (
-    CURRENT_TEMP_CHAR_UUID,
-    START_STOP_CHAR_UUID,
-    TEMPERATURE_CHAR_UUID,
-    TIME_CHAR_UUID,
+    READ_CHAR_UUID,
+    SUBSCRIBE_CHAR_UUID,
+    WRITE_CHAR_UUID,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -56,50 +55,26 @@ class JouleBLEAPI:
         except pygatt.exceptions.BLEError as err:
             _LOGGER.warning("Error during disconnect from %s: %s", self.mac_address, err)
 
-    def set_temperature(self, temperature: float) -> None:
-        """Write the target temperature to the device.
+    def write_message(self, payload: bytes) -> None:
+        """Write a protobuf-encoded message to the device."""
+        try:
+            self._device.char_write(WRITE_CHAR_UUID, bytearray(payload))
+        except pygatt.exceptions.BLEError as err:
+            raise JouleBLEError("Failed to write message to Joule") from err
 
-        Converts °C to centidegrees and encodes as a 2-byte little-endian integer.
+    def read_message(self) -> bytes:
+        """Read a protobuf-encoded response from the device."""
+        try:
+            return bytes(self._device.char_read(READ_CHAR_UUID))
+        except pygatt.exceptions.BLEError as err:
+            raise JouleBLEError("Failed to read message from Joule") from err
+
+    def subscribe(self, callback) -> None:
+        """Subscribe to notifications on the subscribe characteristic.
+
+        ``callback`` is called with ``(handle, value)`` for each notification.
         """
         try:
-            value = int(temperature * 100)
-            self._device.char_write(TEMPERATURE_CHAR_UUID, value.to_bytes(2, "little"))
+            self._device.subscribe(SUBSCRIBE_CHAR_UUID, callback=callback)
         except pygatt.exceptions.BLEError as err:
-            raise JouleBLEError(f"Failed to set temperature to {temperature}°C") from err
-
-    def set_cook_time(self, time_minutes: float) -> None:
-        """Write the cook duration to the device.
-
-        Converts minutes to seconds and encodes as a 4-byte little-endian integer.
-        """
-        try:
-            value = int(time_minutes * 60)
-            self._device.char_write(TIME_CHAR_UUID, value.to_bytes(4, "little"))
-        except pygatt.exceptions.BLEError as err:
-            raise JouleBLEError(f"Failed to set cook time to {time_minutes} minutes") from err
-
-    def start_cooking(self) -> None:
-        """Write 0x01 to the start/stop characteristic to begin cooking."""
-        try:
-            self._device.char_write(START_STOP_CHAR_UUID, bytearray([0x01]))
-        except pygatt.exceptions.BLEError as err:
-            raise JouleBLEError("Failed to start cooking") from err
-
-    def stop_cooking(self) -> None:
-        """Write 0x00 to the start/stop characteristic to stop cooking."""
-        try:
-            self._device.char_write(START_STOP_CHAR_UUID, bytearray([0x00]))
-        except pygatt.exceptions.BLEError as err:
-            raise JouleBLEError("Failed to stop cooking") from err
-
-    def get_current_temperature(self) -> float:
-        """Read the current water temperature from the device.
-
-        Returns temperature in °C. The device encodes it as centidegrees in a
-        little-endian integer.
-        """
-        try:
-            raw = self._device.char_read(CURRENT_TEMP_CHAR_UUID)
-            return int.from_bytes(raw, "little") / 100
-        except pygatt.exceptions.BLEError as err:
-            raise JouleBLEError("Failed to read current temperature") from err
+            raise JouleBLEError("Failed to subscribe to Joule notifications") from err

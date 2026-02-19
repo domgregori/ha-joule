@@ -12,7 +12,7 @@ This integration connects Home Assistant to a **ChefSteps Joule Sous Vide** devi
 | `number` | Cook Time | Sets the cook duration in minutes (0 = unlimited) |
 | `select` | Temperature Unit | Chooses the display unit for Target Temperature (°F default) |
 
-All communication with the physical device goes exclusively through `JouleBLEAPI`, which wraps the `pygatt` GATT library. Entities never access BLE directly — they call coordinator methods and read from `coordinator.data`.
+All communication with the physical device goes exclusively through `JouleBLEAPI`, which wraps the `pygatt` GATT library. Protobuf encoding/decoding is handled by `joule_proto.py`. Entities never access BLE directly — they call coordinator methods and read from `coordinator.data`.
 
 ---
 
@@ -30,6 +30,7 @@ graph TD
     INIT -->|forward_entry_setups| SENSOR[sensor.py]
     INIT -->|forward_entry_setups| SWITCH[switch.py]
 
+    COORD -->|build_* / parse_*| PROTO[joule_proto.py\nProtobuf encode/decode]
     COORD -->|async_add_executor_job| BLE[joule_ble.py\nJouleBLEAPI]
     BLE -->|pygatt GATTToolBackend| JOULE[(Joule Device\nBLE / GATT)]
 
@@ -75,8 +76,10 @@ coordinator._target_temperature = 75.0  (always °C)
         ├──► coordinator.data["target_temperature"] = 75.0
         │           read back by number entity → displayed as 167 °F
         │
-        └──► async_start_cooking(75.0, ...) → api.set_temperature(75.0)
-                                                BLE device always receives °C
+        └──► async_start_cooking(75.0, ...)
+                → build_start_cook_message(75.0, seconds)
+                → api.write_message(protobuf bytes)
+                  BLE device always receives °C
 ```
 
 The `JouleTemperatureUnitSelect` entity only changes `coordinator._temperature_unit`; it never touches `_target_temperature`. All conversions are localised to `number.py`.
@@ -91,6 +94,7 @@ sequenceDiagram
     participant NUM as JouleTargetTemperatureNumber
     participant SEL as JouleTemperatureUnitSelect
     participant COORD as JouleCoordinator
+    participant PROTO as joule_proto
     participant BLE as JouleBLEAPI
     participant DEV as Joule BLE Device
 
@@ -105,12 +109,10 @@ sequenceDiagram
 
     User->>COORD: (switch turn_on)
     COORD->>BLE: ensure_connected()
-    COORD->>BLE: set_temperature(75.0)
-    BLE->>DEV: char_write(TEMPERATURE_CHAR_UUID, 7500 as 2-byte LE)
-    COORD->>BLE: set_cook_time(cook_time_minutes)
-    BLE->>DEV: char_write(TIME_CHAR_UUID, seconds as 4-byte LE)
-    COORD->>BLE: start_cooking()
-    BLE->>DEV: char_write(START_STOP_CHAR_UUID, 0x01)
+    COORD->>PROTO: build_start_cook_message(75.0, 5400)
+    PROTO-->>COORD: protobuf bytes
+    COORD->>BLE: write_message(protobuf bytes)
+    BLE->>DEV: char_write(WRITE_CHAR_UUID, bytes)
     COORD-->>COORD: _is_cooking = True
     COORD->>COORD: async_refresh() → entities update
 ```
@@ -121,16 +123,22 @@ sequenceDiagram
 sequenceDiagram
     participant HA as Home Assistant (scheduler)
     participant COORD as JouleCoordinator
+    participant PROTO as joule_proto
     participant BLE as JouleBLEAPI
     participant DEV as Joule BLE Device
     participant SENSOR as JouleTemperatureSensor
 
     HA->>COORD: _async_update_data() [every 30 s]
     COORD->>BLE: ensure_connected()
-    COORD->>BLE: get_current_temperature()
-    BLE->>DEV: char_read(CURRENT_TEMP_CHAR_UUID)
-    DEV-->>BLE: raw bytes (centidegrees, little-endian)
-    BLE-->>COORD: float (°C)
+    COORD->>BLE: subscribe(_on_notification) [first poll only]
+    COORD->>PROTO: build_live_feed_message()
+    PROTO-->>COORD: protobuf bytes
+    COORD->>BLE: write_message(protobuf bytes)
+    BLE->>DEV: char_write(WRITE_CHAR_UUID, bytes)
+    DEV-->>BLE: notification on SUBSCRIBE_CHAR_UUID
+    BLE-->>COORD: _on_notification(handle, value)
+    COORD->>PROTO: parse_notification(value)
+    PROTO-->>COORD: CirculatorDataPoint(bath_temp, program_step, ...)
     COORD-->>COORD: returns coordinator.data dict
     COORD-->>SENSOR: _handle_coordinator_update()
     SENSOR-->>HA: state = current_temperature (°C)
@@ -154,14 +162,17 @@ sequenceDiagram
 
 Single owner of the BLE connection. Entities read from `coordinator.data` and call coordinator methods for all control operations.
 
-**Internal state** (not read from device — tracked locally):
+**Internal state:**
 
 | Attribute | Type | Default | Description |
 |---|---|---|---|
-| `_is_cooking` | `bool` | `False` | Whether a cook is in progress |
+| `_is_cooking` | `bool` | `False` | Whether a cook is in progress (updated from device `program_step` during polling) |
 | `_target_temperature` | `float` | `60.0` | Target temperature in **°C** |
 | `_cook_time_minutes` | `float` | `0.0` | Cook duration (0 = unlimited) |
 | `_temperature_unit` | `str` | `"°F"` | Display unit preference — loaded from `entry.options["temperature_unit"]` on startup, persisted there on change |
+| `_latest_data_point` | `CirculatorDataPoint \| None` | `None` | Last parsed notification from device |
+| `_notification_received` | `asyncio.Event` | — | Signalled when a CirculatorDataPoint notification arrives |
+| `_subscribed` | `bool` | `False` | Whether we have subscribed to BLE notifications |
 
 **`coordinator.data` keys** (refreshed every 30 s):
 
@@ -177,14 +188,49 @@ Single owner of the BLE connection. Entities read from `coordinator.data` and ca
 
 | Method | What it does |
 |---|---|
-| `_async_update_data()` | Polls the device via `ensure_connected()` + `get_current_temperature()`. Raises `UpdateFailed` on `JouleBLEError`, causing all `CoordinatorEntity` instances to go unavailable. |
-| `async_start_cooking(target_temperature, cook_time_minutes)` | Stores parameters, sends the BLE sequence (`set_temperature` → `set_cook_time` → `start_cooking`), sets `_is_cooking = True`, calls `async_refresh()`. |
-| `async_stop_cooking()` | Sends `stop_cooking()` over BLE, sets `_is_cooking = False`, calls `async_refresh()`. |
+| `_on_notification(handle, value)` | Synchronous callback from pygatt's notification thread. Parses the notification via `parse_notification()`, stores the `CirculatorDataPoint`, and signals `_notification_received` via `call_soon_threadsafe`. |
+| `_async_update_data()` | Subscribes to notifications (first poll only), sends a `BeginLiveFeedRequest` via `write_message()`, waits for a `CirculatorDataPoint` notification (with timeout), reads `bath_temp` and `program_step`. Raises `UpdateFailed` on `JouleBLEError`. |
+| `async_start_cooking(target_temperature, cook_time_minutes)` | Stores parameters, sends a protobuf `StartProgramRequest` via `api.write_message()`, sets `_is_cooking = True`, calls `async_refresh()`. |
+| `async_stop_cooking()` | Sends a protobuf `StopCirculatorRequest` via `api.write_message()`, sets `_is_cooking = False`, calls `async_refresh()`. |
 | `async_set_target_temperature(value_celsius)` | Updates `_target_temperature` (°C) and refreshes. No BLE call. |
 | `async_set_cook_time(value)` | Updates `_cook_time_minutes` and refreshes. No BLE call. |
 | `async_set_temperature_unit(unit)` | Updates `_temperature_unit`, persists the value to `ConfigEntry.options` via `async_update_entry`, and refreshes. No BLE call, no conversion of the stored °C temperature. |
 
 > `async_refresh()` is used (not `async_request_refresh()`) because control actions require immediate state reflection. `async_request_refresh` is debounced and would delay the state update.
+
+---
+
+### `joule_proto.py` — Protobuf Encoding/Decoding
+
+Hand-rolled protobuf encoder/decoder. No external dependencies — uses only `struct` and `dataclasses`. Field numbers and types are reverse-engineered from [chromeJoule's base.proto](https://github.com/li-dennis/chromeJoule/blob/master/dist/protobuf-files/base.proto).
+
+**Enums:**
+
+| Enum | Values |
+|---|---|
+| `ProgramType` | `MANUAL` (0), `AUTOMATIC` (1) |
+| `ProgramStep` | `UNKNOWN` (0), `PRE_HEAT` (1), `WAIT_FOR_FOOD` (2), `COOK` (3), `WAIT_FOR_REMOVE_FOOD` (4), `ERROR` (5) |
+| `ErrorState` | `NO_ERROR` (0), `SOFT_ERROR` (1), `HARD_ERROR` (2) |
+
+**Dataclasses (message types):**
+
+| Class | Key Fields | StreamMessage oneof field # |
+|---|---|---|
+| `CirculatorProgram` | `set_point` (float °C), `cook_time` (uint32 seconds), `program_type` | — (embedded in StartProgramRequest) |
+| `StartProgramRequest` | `circulator_program` (embedded) | 50 |
+| `StopCirculatorRequest` | (empty) | 60 |
+| `BeginLiveFeedRequest` | `feed_id` (uint32) | 70 |
+| `CirculatorDataPoint` | `bath_temp` (float °C), `program_step`, `time_remaining` (seconds) | 90 |
+| `StreamMessage` | `handle`, `sender_address`, `recipient_address` + oneof content | — (root envelope) |
+
+**High-level API** (used by coordinator):
+
+| Function | What it does |
+|---|---|
+| `build_start_cook_message(set_point_celsius, cook_time_seconds)` | Returns serialized `StreamMessage` with `StartProgramRequest`. |
+| `build_stop_cook_message()` | Returns serialized `StreamMessage` with `StopCirculatorRequest`. |
+| `build_live_feed_message(feed_id=1)` | Returns serialized `StreamMessage` with `BeginLiveFeedRequest`. |
+| `parse_notification(data)` | Parses bytes as `StreamMessage`; returns `CirculatorDataPoint` if present, else `None`. Never raises. |
 
 ---
 
@@ -197,21 +243,19 @@ All methods are **synchronous** and must be called via `hass.async_add_executor_
 | `__init__(mac_address)` | Stores MAC address, creates a `pygatt.GATTToolBackend`, sets `self.device = None`. |
 | `ensure_connected()` | No-op if already connected. Otherwise starts the adapter and connects to the device. Raises `JouleBLEError` on failure. |
 | `disconnect()` | Disconnects the device and stops the adapter. |
-| `set_temperature(temperature_celsius)` | Converts °C × 100 → 2-byte LE int, writes to `TEMPERATURE_CHAR_UUID`. |
-| `set_cook_time(time_minutes)` | Converts minutes × 60 → 4-byte LE int (seconds), writes to `TIME_CHAR_UUID`. |
-| `start_cooking()` | Writes `0x01` to `START_STOP_CHAR_UUID`. |
-| `stop_cooking()` | Writes `0x00` to `START_STOP_CHAR_UUID`. |
-| `get_current_temperature()` | Reads `CURRENT_TEMP_CHAR_UUID`, decodes as LE centidegrees, returns `float` (°C). |
+| `write_message(payload)` | Writes a protobuf-encoded byte payload to `WRITE_CHAR_UUID`. |
+| `read_message()` | Reads a protobuf-encoded response from `READ_CHAR_UUID`. |
+| `subscribe(callback)` | Subscribes to notifications on `SUBSCRIBE_CHAR_UUID`. Callback receives `(handle, value)`. |
 
-**BLE Characteristic UUIDs** (all currently placeholders pending hardware verification):
+**BLE GATT UUIDs** (reverse-engineered from the Joule Android app via [chromeJoule](https://github.com/li-dennis/chromeJoule)):
 
-| Constant | Purpose |
-|---|---|
-| `JOULE_SERVICE_UUID` | Primary GATT service |
-| `TEMPERATURE_CHAR_UUID` | Write: target temperature setpoint |
-| `TIME_CHAR_UUID` | Write: cook duration |
-| `START_STOP_CHAR_UUID` | Write: `0x01` = start, `0x00` = stop |
-| `CURRENT_TEMP_CHAR_UUID` | Read: current water temperature |
+| Constant | UUID | Purpose |
+|---|---|---|
+| `JOULE_SERVICE_UUID` | `700b4321-...-31a9098d1473` | Primary GATT service |
+| `WRITE_CHAR_UUID` | `700b4322-...-31a9098d1473` | Write: send protobuf commands |
+| `READ_CHAR_UUID` | `700b4323-...-31a9098d1473` | Read: receive protobuf responses |
+| `SUBSCRIBE_CHAR_UUID` | `700b4325-...-31a9098d1473` | Notify: async protobuf notifications |
+| `FILE_CHAR_UUID` | `700b4326-...-31a9098d1473` | File transfer (firmware updates) |
 
 ---
 
@@ -297,6 +341,7 @@ custom_components/joule_sous_vide/
 ├── config_flow.py        # UI configuration (MAC address input + BLE validation)
 ├── coordinator.py        # JouleCoordinator — single BLE connection owner
 ├── joule_ble.py          # JouleBLEAPI — synchronous BLE I/O (pygatt)
+├── joule_proto.py        # Hand-rolled protobuf encode/decode for Joule messages
 ├── number.py             # Target Temperature + Cook Time number entities
 ├── select.py             # Temperature Unit select entity
 ├── sensor.py             # Current Temperature sensor entity
@@ -316,7 +361,7 @@ custom_components/joule_sous_vide/
 
 | Constraint | Detail |
 |---|---|
-| **Cooking state is write-only** | `is_cooking` is tracked internally. If the device is stopped from the ChefSteps app or loses power, HA will not detect the change automatically. |
-| **BLE UUIDs are unverified** | All GATT characteristic UUIDs are placeholders pending confirmation against real hardware. |
+| **Cooking state feedback** | `is_cooking` is now updated from `CirculatorDataPoint.program_step` during polling. However, between poll intervals (30 s), state may be stale if the device is controlled from the ChefSteps app. |
+| **Protobuf coverage** | Hand-rolled encoder/decoder in `joule_proto.py` covers `StartProgramRequest`, `StopCirculatorRequest`, `BeginLiveFeedRequest`, and `CirculatorDataPoint`. Other message types (IdentifyCirculator, KeepAlive, WiFi, firmware) are decoded as unknown and silently skipped. |
 | **One BLE connection at a time** | `pygatt` holds a single connection per `JouleBLEAPI` instance. The ChefSteps app must be closed while this integration is active. |
 | **Temperature unit is persisted** | `_temperature_unit` is written to `ConfigEntry.options` on every change and read back on startup. It survives HA restarts. |

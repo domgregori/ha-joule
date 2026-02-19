@@ -6,6 +6,7 @@ from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.joule_sous_vide.const import CONF_MAC_ADDRESS, DOMAIN
+from custom_components.joule_sous_vide.coordinator import JouleCoordinator
 
 TEST_MAC = "AA:BB:CC:DD:EE:FF"
 TEST_ENTRY_ID = "test_entry_id"
@@ -34,9 +35,18 @@ def mock_ble_api():
         "custom_components.joule_sous_vide.coordinator.JouleBLEAPI"
     ) as mock_cls:
         instance = MagicMock()
-        instance.get_current_temperature.return_value = 60.5
         mock_cls.return_value = instance
         yield instance
+
+
+@pytest.fixture(autouse=True)
+def _fast_notification_timeout(monkeypatch: pytest.MonkeyPatch):
+    """Patch NOTIFICATION_TIMEOUT on the class so all tests run fast.
+
+    This applies before the coordinator is instantiated, so the first
+    refresh during async_config_entry_first_refresh uses the patched value.
+    """
+    monkeypatch.setattr(JouleCoordinator, "NOTIFICATION_TIMEOUT", 0.01)
 
 
 @pytest.fixture

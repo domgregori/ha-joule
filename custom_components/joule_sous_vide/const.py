@@ -31,10 +31,13 @@ STEP_COOK_TIME_MINUTES: Final = 1.0
 # Temperature unit preference
 DEFAULT_TEMPERATURE_UNIT: Final = "°F"
 
-# BLE GATT characteristic UUIDs
-# TODO: Replace with real Joule UUIDs once reverse-engineered
-JOULE_SERVICE_UUID: Final = "YOUR_JOULE_SERVICE_UUID"
-TEMPERATURE_CHAR_UUID: Final = "YOUR_TEMPERATURE_CHAR_UUID"
-TIME_CHAR_UUID: Final = "YOUR_TIME_CHAR_UUID"
-START_STOP_CHAR_UUID: Final = "YOUR_START_STOP_CHAR_UUID"
-CURRENT_TEMP_CHAR_UUID: Final = "YOUR_CURRENT_TEMP_CHAR_UUID"
+# BLE GATT UUIDs — reverse-engineered from the Joule Android app
+# Source: https://github.com/li-dennis/chromeJoule/blob/master/src/constants.ts
+JOULE_SERVICE_UUID: Final = "700b4321-9836-4383-a2b2-31a9098d1473"
+WRITE_CHAR_UUID: Final = "700b4322-9836-4383-a2b2-31a9098d1473"
+READ_CHAR_UUID: Final = "700b4323-9836-4383-a2b2-31a9098d1473"
+SUBSCRIBE_CHAR_UUID: Final = "700b4325-9836-4383-a2b2-31a9098d1473"
+FILE_CHAR_UUID: Final = "700b4326-9836-4383-a2b2-31a9098d1473"
+
+# BLE manufacturer ID (used during discovery/scanning)
+JOULE_MANUFACTURER_ID: Final = 0x0159

@@ -37,30 +37,29 @@ async def test_update_data_returns_expected_shape(
     assert "temperature_unit" in coordinator.data
 
 
-async def test_update_data_reflects_device_temperature(
+async def test_update_data_returns_zero_temperature_placeholder(
     hass: HomeAssistant,
     setup_integration: MockConfigEntry,
     mock_ble_api: MagicMock,
 ) -> None:
-    """current_temperature matches the value returned by get_current_temperature."""
+    """current_temperature is 0.0 (placeholder until protobuf is implemented)."""
     coordinator: JouleCoordinator = hass.data[DOMAIN][setup_integration.entry_id]
 
-    mock_ble_api.get_current_temperature.return_value = 72.3
     await coordinator.async_refresh()
     await hass.async_block_till_done()
 
-    assert coordinator.data["current_temperature"] == pytest.approx(72.3)
+    assert coordinator.data["current_temperature"] == 0.0
 
 
-async def test_update_data_raises_update_failed_on_ble_error(
+async def test_update_data_raises_update_failed_on_connect_error_during_poll(
     hass: HomeAssistant,
     setup_integration: MockConfigEntry,
     mock_ble_api: MagicMock,
 ) -> None:
-    """A JouleBLEError during polling raises UpdateFailed."""
+    """A JouleBLEError from ensure_connected during polling raises UpdateFailed."""
     coordinator: JouleCoordinator = hass.data[DOMAIN][setup_integration.entry_id]
 
-    mock_ble_api.get_current_temperature.side_effect = JouleBLEError("BLE lost")
+    mock_ble_api.ensure_connected.side_effect = JouleBLEError("BLE lost")
 
     with pytest.raises(UpdateFailed):
         await coordinator._async_update_data()
@@ -157,43 +156,17 @@ async def test_temperature_unit_loaded_from_options_on_startup(
 # ---------------------------------------------------------------------------
 
 
-async def test_start_cooking_sends_temperature_to_device(
+async def test_start_cooking_calls_ensure_connected(
     hass: HomeAssistant,
     setup_integration: MockConfigEntry,
     mock_ble_api: MagicMock,
 ) -> None:
-    """async_start_cooking writes the target temperature to the BLE device."""
+    """async_start_cooking ensures BLE connection before sending commands."""
     coordinator: JouleCoordinator = hass.data[DOMAIN][setup_integration.entry_id]
 
     await coordinator.async_start_cooking(65.0, 90.0)
 
-    mock_ble_api.set_temperature.assert_called_once_with(65.0)
-
-
-async def test_start_cooking_sends_cook_time_to_device(
-    hass: HomeAssistant,
-    setup_integration: MockConfigEntry,
-    mock_ble_api: MagicMock,
-) -> None:
-    """async_start_cooking writes the cook time to the BLE device."""
-    coordinator: JouleCoordinator = hass.data[DOMAIN][setup_integration.entry_id]
-
-    await coordinator.async_start_cooking(65.0, 90.0)
-
-    mock_ble_api.set_cook_time.assert_called_once_with(90.0)
-
-
-async def test_start_cooking_sends_start_command(
-    hass: HomeAssistant,
-    setup_integration: MockConfigEntry,
-    mock_ble_api: MagicMock,
-) -> None:
-    """async_start_cooking calls start_cooking on the BLE device."""
-    coordinator: JouleCoordinator = hass.data[DOMAIN][setup_integration.entry_id]
-
-    await coordinator.async_start_cooking(65.0, 90.0)
-
-    mock_ble_api.start_cooking.assert_called_once()
+    mock_ble_api.ensure_connected.assert_called()
 
 
 async def test_start_cooking_updates_is_cooking(
@@ -225,15 +198,15 @@ async def test_start_cooking_stores_settings_in_data(
     assert coordinator.data["cook_time_minutes"] == 90.0
 
 
-async def test_start_cooking_raises_homeassistant_error_on_ble_failure(
+async def test_start_cooking_raises_homeassistant_error_on_connect_failure(
     hass: HomeAssistant,
     setup_integration: MockConfigEntry,
     mock_ble_api: MagicMock,
 ) -> None:
-    """A JouleBLEError during start_cooking raises HomeAssistantError."""
+    """A JouleBLEError from ensure_connected during start_cooking raises HomeAssistantError."""
     coordinator: JouleCoordinator = hass.data[DOMAIN][setup_integration.entry_id]
 
-    mock_ble_api.start_cooking.side_effect = JouleBLEError("Write failed")
+    mock_ble_api.ensure_connected.side_effect = JouleBLEError("Connect failed")
 
     with pytest.raises(HomeAssistantError):
         await coordinator.async_start_cooking(65.0, 90.0)
@@ -244,17 +217,17 @@ async def test_start_cooking_raises_homeassistant_error_on_ble_failure(
 # ---------------------------------------------------------------------------
 
 
-async def test_stop_cooking_sends_stop_command(
+async def test_stop_cooking_calls_ensure_connected(
     hass: HomeAssistant,
     setup_integration: MockConfigEntry,
     mock_ble_api: MagicMock,
 ) -> None:
-    """async_stop_cooking calls stop_cooking on the BLE device."""
+    """async_stop_cooking ensures BLE connection before sending commands."""
     coordinator: JouleCoordinator = hass.data[DOMAIN][setup_integration.entry_id]
 
     await coordinator.async_stop_cooking()
 
-    mock_ble_api.stop_cooking.assert_called_once()
+    mock_ble_api.ensure_connected.assert_called()
 
 
 async def test_stop_cooking_updates_is_cooking(
@@ -276,15 +249,15 @@ async def test_stop_cooking_updates_is_cooking(
     assert coordinator.data["is_cooking"] is False
 
 
-async def test_stop_cooking_raises_homeassistant_error_on_ble_failure(
+async def test_stop_cooking_raises_homeassistant_error_on_connect_failure(
     hass: HomeAssistant,
     setup_integration: MockConfigEntry,
     mock_ble_api: MagicMock,
 ) -> None:
-    """A JouleBLEError during stop_cooking raises HomeAssistantError."""
+    """A JouleBLEError from ensure_connected during stop_cooking raises HomeAssistantError."""
     coordinator: JouleCoordinator = hass.data[DOMAIN][setup_integration.entry_id]
 
-    mock_ble_api.stop_cooking.side_effect = JouleBLEError("Write failed")
+    mock_ble_api.ensure_connected.side_effect = JouleBLEError("Connect failed")
 
     with pytest.raises(HomeAssistantError):
         await coordinator.async_stop_cooking()

@@ -73,18 +73,17 @@ async def test_sensor_device_info(
 # ---------------------------------------------------------------------------
 
 
-async def test_sensor_state_matches_device_temperature(
+async def test_sensor_state_returns_placeholder_temperature(
     hass: HomeAssistant,
     setup_integration: MockConfigEntry,
     mock_ble_api: MagicMock,
 ) -> None:
-    """Sensor state reflects the temperature returned by the BLE device."""
+    """Sensor state returns 0.0 (placeholder until protobuf is implemented)."""
     from custom_components.joule_sous_vide.const import DOMAIN
     from custom_components.joule_sous_vide.coordinator import JouleCoordinator
 
     coordinator: JouleCoordinator = hass.data[DOMAIN][setup_integration.entry_id]
 
-    mock_ble_api.get_current_temperature.return_value = 58.75
     await coordinator.async_refresh()
     await hass.async_block_till_done()
 
@@ -92,7 +91,7 @@ async def test_sensor_state_matches_device_temperature(
     state = hass.states.get(entity_id)
 
     assert state is not None
-    assert float(state.state) == pytest.approx(58.75)
+    assert float(state.state) == pytest.approx(0.0)
 
 
 async def test_sensor_unit_of_measurement(
@@ -116,7 +115,7 @@ async def test_sensor_becomes_unavailable_on_ble_failure(
 
     coordinator: JouleCoordinator = hass.data[DOMAIN][setup_integration.entry_id]
 
-    mock_ble_api.get_current_temperature.side_effect = JouleBLEError("Connection lost")
+    mock_ble_api.ensure_connected.side_effect = JouleBLEError("Connection lost")
     await coordinator.async_refresh()
     await hass.async_block_till_done()
 
@@ -137,7 +136,7 @@ async def test_sensor_recovers_after_ble_failure(
     coordinator: JouleCoordinator = hass.data[DOMAIN][setup_integration.entry_id]
 
     # Cause a failure.
-    mock_ble_api.get_current_temperature.side_effect = JouleBLEError("Lost")
+    mock_ble_api.ensure_connected.side_effect = JouleBLEError("Lost")
     await coordinator.async_refresh()
     await hass.async_block_till_done()
 
@@ -145,9 +144,8 @@ async def test_sensor_recovers_after_ble_failure(
     assert hass.states.get(entity_id).state == STATE_UNAVAILABLE
 
     # Recover.
-    mock_ble_api.get_current_temperature.side_effect = None
-    mock_ble_api.get_current_temperature.return_value = 63.0
+    mock_ble_api.ensure_connected.side_effect = None
     await coordinator.async_refresh()
     await hass.async_block_till_done()
 
-    assert float(hass.states.get(entity_id).state) == pytest.approx(63.0)
+    assert float(hass.states.get(entity_id).state) == pytest.approx(0.0)

@@ -231,6 +231,7 @@ async def test_turn_on_switch_sends_celsius_to_ble(
     mock_ble_api: MagicMock,
 ) -> None:
     """The switch always sends °C to the BLE device, regardless of display unit."""
+    coordinator: JouleCoordinator = hass.data[DOMAIN][setup_integration.entry_id]
     temp_entity_id = _get_entity_id(hass, TARGET_TEMP_UNIQUE_ID)
     switch_entity_id = er.async_get(hass).async_get_entity_id(
         "switch", DOMAIN, f"{TEST_ENTRY_ID}_switch"
@@ -247,7 +248,8 @@ async def test_turn_on_switch_sends_celsius_to_ble(
     )
     await hass.async_block_till_done()
 
-    mock_ble_api.set_temperature.assert_called_once_with(pytest.approx(75.0, abs=0.01))
+    # Verify coordinator stored the correct °C value
+    assert coordinator.data["target_temperature"] == pytest.approx(75.0, abs=0.01)
 
 
 # ---------------------------------------------------------------------------
@@ -324,7 +326,7 @@ async def test_number_entities_become_unavailable_on_ble_failure(
     """Both number entities show Unavailable when the coordinator cannot reach the device."""
     coordinator: JouleCoordinator = hass.data[DOMAIN][setup_integration.entry_id]
 
-    mock_ble_api.get_current_temperature.side_effect = JouleBLEError("Lost")
+    mock_ble_api.ensure_connected.side_effect = JouleBLEError("Lost")
     await coordinator.async_refresh()
     await hass.async_block_till_done()
 

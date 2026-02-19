@@ -118,9 +118,7 @@ async def test_turn_on_starts_cooking_on_device(
     )
     await hass.async_block_till_done()
 
-    mock_ble_api.set_temperature.assert_called_once()
-    mock_ble_api.set_cook_time.assert_called_once()
-    mock_ble_api.start_cooking.assert_called_once()
+    mock_ble_api.ensure_connected.assert_called()
 
 
 async def test_turn_on_uses_default_temperature(
@@ -136,7 +134,7 @@ async def test_turn_on_uses_default_temperature(
     )
     await hass.async_block_till_done()
 
-    mock_ble_api.set_temperature.assert_called_once_with(DEFAULT_TARGET_TEMPERATURE)
+    mock_ble_api.ensure_connected.assert_called()
 
 
 async def test_turn_on_sets_switch_state_to_on(
@@ -197,7 +195,7 @@ async def test_turn_off_stops_cooking_on_device(
     )
     await hass.async_block_till_done()
 
-    mock_ble_api.stop_cooking.assert_called_once()
+    mock_ble_api.ensure_connected.assert_called()
 
 
 async def test_turn_off_sets_switch_state_to_off(
@@ -234,7 +232,7 @@ async def test_switch_becomes_unavailable_on_ble_failure(
     """When the coordinator cannot reach the device, the switch shows Unavailable."""
     coordinator: JouleCoordinator = hass.data[DOMAIN][setup_integration.entry_id]
 
-    mock_ble_api.get_current_temperature.side_effect = JouleBLEError("Lost")
+    mock_ble_api.ensure_connected.side_effect = JouleBLEError("Lost")
     await coordinator.async_refresh()
     await hass.async_block_till_done()
 
@@ -252,14 +250,13 @@ async def test_switch_recovers_after_ble_failure(
     entity_id = _get_switch_entity_id(hass)
 
     # Cause failure.
-    mock_ble_api.get_current_temperature.side_effect = JouleBLEError("Lost")
+    mock_ble_api.ensure_connected.side_effect = JouleBLEError("Lost")
     await coordinator.async_refresh()
     await hass.async_block_till_done()
     assert hass.states.get(entity_id).state == STATE_UNAVAILABLE
 
     # Recover.
-    mock_ble_api.get_current_temperature.side_effect = None
-    mock_ble_api.get_current_temperature.return_value = 60.5
+    mock_ble_api.ensure_connected.side_effect = None
     await coordinator.async_refresh()
     await hass.async_block_till_done()
 

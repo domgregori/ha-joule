@@ -198,7 +198,7 @@ async def test_select_becomes_unavailable_on_ble_failure(
     """Select entity shows Unavailable when the coordinator cannot reach the device."""
     coordinator: JouleCoordinator = hass.data[DOMAIN][setup_integration.entry_id]
 
-    mock_ble_api.get_current_temperature.side_effect = JouleBLEError("Lost")
+    mock_ble_api.ensure_connected.side_effect = JouleBLEError("Lost")
     await coordinator.async_refresh()
     await hass.async_block_till_done()
 
