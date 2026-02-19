@@ -1,0 +1,41 @@
+name: Release Card
+
+on:
+  push:
+    tags:
+      - "card-v*"
+
+jobs:
+  release-card:
+    name: Create card release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#card-v}" >> $GITHUB_OUTPUT
+
+      - name: Validate card version matches tag
+        run: |
+          card_version=$(grep -m1 'CARD_VERSION\s*=' custom_components/joule_sous_vide/www/joule-card.js \
+            | sed 's/.*"\(.*\)".*/\1/')
+          tag_version="${{ steps.version.outputs.version }}"
+          if [ "$card_version" != "$tag_version" ]; then
+            echo "❌ Card version mismatch: joule-card.js has $card_version but tag is card-v$tag_version"
+            exit 1
+          fi
+          echo "✅ Card version $card_version matches tag"
+
+      - name: Copy card for release
+        run: cp custom_components/joule_sous_vide/www/joule-card.js joule-card.js
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Lovelace Card v${{ steps.version.outputs.version }}"
+          files: joule-card.js
+          generate_release_notes: true
