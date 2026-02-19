@@ -12,3 +12,8 @@ htmlcov/
 
 # macOS
 .DS_Store
+
+# Local tooling
+.claude/
+.vs/
+CLAUDE.md
