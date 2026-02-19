@@ -141,7 +141,7 @@ These are the next planned improvements, in priority order:
 
 ### ~~1 — Set a target temperature~~ ✅ Done
 
-Two `number` entities — **Target Temperature** (0–100 °C) and **Cook Time** (0–1440 min) — let you set cooking parameters from the dashboard or an automation. When the Sous Vide switch is turned on it reads the current values and passes them to the device.
+Two `number` entities — **Target Temperature** and **Cook Time** (0–1440 min) — let you set cooking parameters from the dashboard or an automation. When the Sous Vide switch is turned on it reads the current values and passes them to the device. A **Temperature Unit** `select` entity (default °F) controls whether the target temperature is displayed and entered in °F or °C; the device always receives °C internally.
 
 ### 2 — Custom Lovelace card
 
