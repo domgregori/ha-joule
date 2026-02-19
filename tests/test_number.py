@@ -2,7 +2,7 @@
 from unittest.mock import MagicMock
 
 import pytest
-from homeassistant.const import STATE_UNAVAILABLE
+from homeassistant.const import STATE_UNAVAILABLE, UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -12,9 +12,9 @@ from custom_components.joule_sous_vide.const import (
     DEFAULT_TARGET_TEMPERATURE,
     DOMAIN,
     MAX_COOK_TIME_MINUTES,
-    MAX_TARGET_TEMPERATURE,
+    MAX_TARGET_TEMPERATURE_F,
     MIN_COOK_TIME_MINUTES,
-    MIN_TARGET_TEMPERATURE,
+    MIN_TARGET_TEMPERATURE_F,
 )
 from custom_components.joule_sous_vide.coordinator import JouleCoordinator
 from custom_components.joule_sous_vide.joule_ble import JouleBLEError
@@ -23,6 +23,9 @@ from .conftest import TEST_ENTRY_ID
 
 TARGET_TEMP_UNIQUE_ID = f"{TEST_ENTRY_ID}_target_temperature"
 COOK_TIME_UNIQUE_ID = f"{TEST_ENTRY_ID}_cook_time_minutes"
+
+# Default display value: 60 °C converted to °F
+DEFAULT_TARGET_TEMPERATURE_F = DEFAULT_TARGET_TEMPERATURE * 9 / 5 + 32  # 140.0
 
 
 def _get_entity_id(hass: HomeAssistant, unique_id: str) -> str:
@@ -99,18 +102,28 @@ async def test_number_entities_belong_to_joule_device(
 
 
 # ---------------------------------------------------------------------------
-# Initial state
+# Initial state (default unit: °F)
 # ---------------------------------------------------------------------------
 
 
-async def test_target_temperature_default_value(
+async def test_target_temperature_default_value_in_fahrenheit(
     hass: HomeAssistant,
     setup_integration: MockConfigEntry,
 ) -> None:
-    """Target temperature starts at the default value."""
+    """Target temperature defaults to 140 °F (= 60 °C) when the unit is °F."""
     entity_id = _get_entity_id(hass, TARGET_TEMP_UNIQUE_ID)
     state = hass.states.get(entity_id)
-    assert float(state.state) == pytest.approx(DEFAULT_TARGET_TEMPERATURE)
+    assert float(state.state) == pytest.approx(DEFAULT_TARGET_TEMPERATURE_F)
+
+
+async def test_target_temperature_unit_is_fahrenheit_by_default(
+    hass: HomeAssistant,
+    setup_integration: MockConfigEntry,
+) -> None:
+    """Target temperature entity reports °F as its unit by default."""
+    entity_id = _get_entity_id(hass, TARGET_TEMP_UNIQUE_ID)
+    state = hass.states.get(entity_id)
+    assert state.attributes.get("unit_of_measurement") == UnitOfTemperature.FAHRENHEIT
 
 
 async def test_cook_time_default_value(
@@ -123,15 +136,15 @@ async def test_cook_time_default_value(
     assert float(state.state) == pytest.approx(DEFAULT_COOK_TIME_MINUTES)
 
 
-async def test_target_temperature_min_max(
+async def test_target_temperature_min_max_in_fahrenheit(
     hass: HomeAssistant,
     setup_integration: MockConfigEntry,
 ) -> None:
-    """Target temperature entity exposes the correct min and max values."""
+    """Target temperature entity exposes °F min/max when unit is °F."""
     entity_id = _get_entity_id(hass, TARGET_TEMP_UNIQUE_ID)
     state = hass.states.get(entity_id)
-    assert float(state.attributes["min"]) == MIN_TARGET_TEMPERATURE
-    assert float(state.attributes["max"]) == MAX_TARGET_TEMPERATURE
+    assert float(state.attributes["min"]) == pytest.approx(MIN_TARGET_TEMPERATURE_F)
+    assert float(state.attributes["max"]) == pytest.approx(MAX_TARGET_TEMPERATURE_F)
 
 
 async def test_cook_time_min_max(
@@ -146,24 +159,39 @@ async def test_cook_time_min_max(
 
 
 # ---------------------------------------------------------------------------
-# Setting values
+# Setting values — °F mode (default)
 # ---------------------------------------------------------------------------
 
 
-async def test_set_target_temperature_updates_coordinator(
+async def test_set_target_temperature_in_f_stores_celsius_in_coordinator(
     hass: HomeAssistant,
     setup_integration: MockConfigEntry,
 ) -> None:
-    """Setting target temperature updates the coordinator's stored value."""
+    """Setting 167 °F via the number entity stores 75 °C in the coordinator."""
     coordinator: JouleCoordinator = hass.data[DOMAIN][setup_integration.entry_id]
     entity_id = _get_entity_id(hass, TARGET_TEMP_UNIQUE_ID)
 
     await hass.services.async_call(
-        "number", "set_value", {"entity_id": entity_id, "value": 75.0}, blocking=True
+        "number", "set_value", {"entity_id": entity_id, "value": 167.0}, blocking=True
     )
     await hass.async_block_till_done()
 
-    assert coordinator.data["target_temperature"] == pytest.approx(75.0)
+    assert coordinator.data["target_temperature"] == pytest.approx(75.0, abs=0.01)
+
+
+async def test_set_target_temperature_reflected_in_state(
+    hass: HomeAssistant,
+    setup_integration: MockConfigEntry,
+) -> None:
+    """After setting a °F value, the entity state reflects that °F value."""
+    entity_id = _get_entity_id(hass, TARGET_TEMP_UNIQUE_ID)
+
+    await hass.services.async_call(
+        "number", "set_value", {"entity_id": entity_id, "value": 140.0}, blocking=True
+    )
+    await hass.async_block_till_done()
+
+    assert float(hass.states.get(entity_id).state) == pytest.approx(140.0)
 
 
 async def test_set_cook_time_updates_coordinator(
@@ -182,21 +210,6 @@ async def test_set_cook_time_updates_coordinator(
     assert coordinator.data["cook_time_minutes"] == pytest.approx(90.0)
 
 
-async def test_set_target_temperature_reflected_in_state(
-    hass: HomeAssistant,
-    setup_integration: MockConfigEntry,
-) -> None:
-    """After setting target temperature, the entity state reflects the new value."""
-    entity_id = _get_entity_id(hass, TARGET_TEMP_UNIQUE_ID)
-
-    await hass.services.async_call(
-        "number", "set_value", {"entity_id": entity_id, "value": 63.5}, blocking=True
-    )
-    await hass.async_block_till_done()
-
-    assert float(hass.states.get(entity_id).state) == pytest.approx(63.5)
-
-
 async def test_set_cook_time_reflected_in_state(
     hass: HomeAssistant,
     setup_integration: MockConfigEntry,
@@ -212,19 +225,20 @@ async def test_set_cook_time_reflected_in_state(
     assert float(hass.states.get(entity_id).state) == pytest.approx(120.0)
 
 
-async def test_turn_on_switch_uses_updated_target_temperature(
+async def test_turn_on_switch_sends_celsius_to_ble(
     hass: HomeAssistant,
     setup_integration: MockConfigEntry,
     mock_ble_api: MagicMock,
 ) -> None:
-    """When the switch is turned on, it uses the target temperature set via the number entity."""
+    """The switch always sends °C to the BLE device, regardless of display unit."""
     temp_entity_id = _get_entity_id(hass, TARGET_TEMP_UNIQUE_ID)
     switch_entity_id = er.async_get(hass).async_get_entity_id(
         "switch", DOMAIN, f"{TEST_ENTRY_ID}_switch"
     )
 
+    # Set 167 °F = 75 °C
     await hass.services.async_call(
-        "number", "set_value", {"entity_id": temp_entity_id, "value": 82.0}, blocking=True
+        "number", "set_value", {"entity_id": temp_entity_id, "value": 167.0}, blocking=True
     )
     await hass.async_block_till_done()
 
@@ -233,7 +247,68 @@ async def test_turn_on_switch_uses_updated_target_temperature(
     )
     await hass.async_block_till_done()
 
-    mock_ble_api.set_temperature.assert_called_once_with(82.0)
+    mock_ble_api.set_temperature.assert_called_once_with(pytest.approx(75.0, abs=0.01))
+
+
+# ---------------------------------------------------------------------------
+# Unit switching: °F → °C
+# ---------------------------------------------------------------------------
+
+
+async def test_switch_unit_to_celsius_updates_display(
+    hass: HomeAssistant,
+    setup_integration: MockConfigEntry,
+) -> None:
+    """Switching to °C shows the stored temperature in °C."""
+    coordinator: JouleCoordinator = hass.data[DOMAIN][setup_integration.entry_id]
+    temp_entity_id = _get_entity_id(hass, TARGET_TEMP_UNIQUE_ID)
+
+    await coordinator.async_set_temperature_unit(UnitOfTemperature.CELSIUS)
+    await hass.async_block_till_done()
+
+    state = hass.states.get(temp_entity_id)
+    assert state.attributes.get("unit_of_measurement") == UnitOfTemperature.CELSIUS
+    assert float(state.state) == pytest.approx(DEFAULT_TARGET_TEMPERATURE)
+
+
+async def test_switch_unit_to_celsius_updates_min_max(
+    hass: HomeAssistant,
+    setup_integration: MockConfigEntry,
+) -> None:
+    """Switching to °C updates the min/max bounds to the °C range."""
+    from custom_components.joule_sous_vide.const import (
+        MAX_TARGET_TEMPERATURE,
+        MIN_TARGET_TEMPERATURE,
+    )
+
+    coordinator: JouleCoordinator = hass.data[DOMAIN][setup_integration.entry_id]
+    temp_entity_id = _get_entity_id(hass, TARGET_TEMP_UNIQUE_ID)
+
+    await coordinator.async_set_temperature_unit(UnitOfTemperature.CELSIUS)
+    await hass.async_block_till_done()
+
+    state = hass.states.get(temp_entity_id)
+    assert float(state.attributes["min"]) == pytest.approx(MIN_TARGET_TEMPERATURE)
+    assert float(state.attributes["max"]) == pytest.approx(MAX_TARGET_TEMPERATURE)
+
+
+async def test_set_target_temperature_in_c_stores_celsius_unchanged(
+    hass: HomeAssistant,
+    setup_integration: MockConfigEntry,
+) -> None:
+    """When unit is °C, setting a value stores it directly without conversion."""
+    coordinator: JouleCoordinator = hass.data[DOMAIN][setup_integration.entry_id]
+    temp_entity_id = _get_entity_id(hass, TARGET_TEMP_UNIQUE_ID)
+
+    await coordinator.async_set_temperature_unit(UnitOfTemperature.CELSIUS)
+    await hass.async_block_till_done()
+
+    await hass.services.async_call(
+        "number", "set_value", {"entity_id": temp_entity_id, "value": 82.0}, blocking=True
+    )
+    await hass.async_block_till_done()
+
+    assert coordinator.data["target_temperature"] == pytest.approx(82.0)
 
 
 # ---------------------------------------------------------------------------

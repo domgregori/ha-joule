@@ -47,8 +47,15 @@ async def test_setup_entry_creates_all_entities(
 
     assert sensor_id is not None, "Temperature sensor entity was not created"
     assert switch_id is not None, "Sous vide switch entity was not created"
+    unit_select_id = registry.async_get_entity_id(
+        "select", DOMAIN, f"{TEST_ENTRY_ID}_temperature_unit"
+    )
+
+    assert sensor_id is not None, "Temperature sensor entity was not created"
+    assert switch_id is not None, "Sous vide switch entity was not created"
     assert target_temp_id is not None, "Target temperature number entity was not created"
     assert cook_time_id is not None, "Cook time number entity was not created"
+    assert unit_select_id is not None, "Temperature unit select entity was not created"
 
 
 async def test_setup_entry_config_entry_not_ready_on_ble_failure(

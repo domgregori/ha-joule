@@ -15,6 +15,7 @@ from .const import (
     DEFAULT_COOK_TIME_MINUTES,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_TARGET_TEMPERATURE,
+    DEFAULT_TEMPERATURE_UNIT,
     DOMAIN,
 )
 from .joule_ble import JouleBLEAPI, JouleBLEError
@@ -36,8 +37,9 @@ class JouleCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         self.api = JouleBLEAPI(entry.data[CONF_MAC_ADDRESS])
         self._is_cooking: bool = False
-        self._target_temperature: float = DEFAULT_TARGET_TEMPERATURE
+        self._target_temperature: float = DEFAULT_TARGET_TEMPERATURE  # always °C
         self._cook_time_minutes: float = DEFAULT_COOK_TIME_MINUTES
+        self._temperature_unit: str = DEFAULT_TEMPERATURE_UNIT
 
         super().__init__(
             hass,
@@ -64,8 +66,9 @@ class JouleCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return {
             "current_temperature": current_temperature,
             "is_cooking": self._is_cooking,
-            "target_temperature": self._target_temperature,
+            "target_temperature": self._target_temperature,  # °C
             "cook_time_minutes": self._cook_time_minutes,
+            "temperature_unit": self._temperature_unit,
         }
 
     async def async_start_cooking(
@@ -89,9 +92,14 @@ class JouleCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._is_cooking = True
         await self.async_refresh()
 
-    async def async_set_target_temperature(self, value: float) -> None:
-        """Update the target temperature without starting a cook."""
-        self._target_temperature = value
+    async def async_set_target_temperature(self, value_celsius: float) -> None:
+        """Update the target temperature (always in °C) without starting a cook."""
+        self._target_temperature = value_celsius
+        await self.async_refresh()
+
+    async def async_set_temperature_unit(self, unit: str) -> None:
+        """Update the display unit preference without affecting the stored °C value."""
+        self._temperature_unit = unit
         await self.async_refresh()
 
     async def async_set_cook_time(self, value: float) -> None:

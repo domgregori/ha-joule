@@ -12,15 +12,27 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import (
     DEFAULT_COOK_TIME_MINUTES,
     DEFAULT_TARGET_TEMPERATURE,
+    DEFAULT_TEMPERATURE_UNIT,
     DOMAIN,
     MAX_COOK_TIME_MINUTES,
     MAX_TARGET_TEMPERATURE,
+    MAX_TARGET_TEMPERATURE_F,
     MIN_COOK_TIME_MINUTES,
     MIN_TARGET_TEMPERATURE,
+    MIN_TARGET_TEMPERATURE_F,
     STEP_COOK_TIME_MINUTES,
     STEP_TARGET_TEMPERATURE,
+    STEP_TARGET_TEMPERATURE_F,
 )
 from .coordinator import JouleCoordinator
+
+
+def _c_to_f(celsius: float) -> float:
+    return celsius * 9 / 5 + 32
+
+
+def _f_to_c(fahrenheit: float) -> float:
+    return (fahrenheit - 32) * 5 / 9
 
 
 async def async_setup_entry(
@@ -48,17 +60,15 @@ def _device_info(entry: ConfigEntry) -> DeviceInfo:
 class JouleTargetTemperatureNumber(CoordinatorEntity[JouleCoordinator], NumberEntity):
     """Sets the water temperature the Joule will heat to when started.
 
-    The value is stored in the coordinator and passed to the device the next
-    time the Sous Vide switch is turned on. Changing this entity does not
-    affect a cook that is already in progress.
+    Displays and accepts values in the unit chosen by the Temperature Unit
+    select entity (°F by default). Internally the coordinator always stores
+    the value in °C; conversion happens here in the entity layer.
+
+    Changing this entity does not affect a cook already in progress.
     """
 
     _attr_has_entity_name = True
     _attr_name = "Target Temperature"
-    _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
-    _attr_native_min_value = MIN_TARGET_TEMPERATURE
-    _attr_native_max_value = MAX_TARGET_TEMPERATURE
-    _attr_native_step = STEP_TARGET_TEMPERATURE
     _attr_mode = NumberMode.BOX
 
     def __init__(self, coordinator: JouleCoordinator, entry: ConfigEntry) -> None:
@@ -66,16 +76,61 @@ class JouleTargetTemperatureNumber(CoordinatorEntity[JouleCoordinator], NumberEn
         self._attr_unique_id = f"{entry.entry_id}_target_temperature"
         self._attr_device_info = _device_info(entry)
 
+    def _current_unit(self) -> str:
+        if self.coordinator.data is None:
+            return DEFAULT_TEMPERATURE_UNIT
+        return self.coordinator.data.get("temperature_unit", DEFAULT_TEMPERATURE_UNIT)
+
+    @property
+    def native_unit_of_measurement(self) -> str:
+        return self._current_unit()
+
+    @property
+    def native_min_value(self) -> float:
+        return (
+            MIN_TARGET_TEMPERATURE_F
+            if self._current_unit() == UnitOfTemperature.FAHRENHEIT
+            else MIN_TARGET_TEMPERATURE
+        )
+
+    @property
+    def native_max_value(self) -> float:
+        return (
+            MAX_TARGET_TEMPERATURE_F
+            if self._current_unit() == UnitOfTemperature.FAHRENHEIT
+            else MAX_TARGET_TEMPERATURE
+        )
+
+    @property
+    def native_step(self) -> float:
+        return (
+            STEP_TARGET_TEMPERATURE_F
+            if self._current_unit() == UnitOfTemperature.FAHRENHEIT
+            else STEP_TARGET_TEMPERATURE
+        )
+
     @property
     def native_value(self) -> float:
-        """Return the current target temperature from coordinator data."""
-        if self.coordinator.data is None:
-            return DEFAULT_TARGET_TEMPERATURE
-        return self.coordinator.data.get("target_temperature", DEFAULT_TARGET_TEMPERATURE)
+        """Return the target temperature in the selected display unit."""
+        temp_c = (
+            self.coordinator.data.get("target_temperature", DEFAULT_TARGET_TEMPERATURE)
+            if self.coordinator.data is not None
+            else DEFAULT_TARGET_TEMPERATURE
+        )
+        return (
+            round(_c_to_f(temp_c), 1)
+            if self._current_unit() == UnitOfTemperature.FAHRENHEIT
+            else temp_c
+        )
 
     async def async_set_native_value(self, value: float) -> None:
-        """Update the target temperature in the coordinator."""
-        await self.coordinator.async_set_target_temperature(value)
+        """Convert the display-unit value to °C and store it in the coordinator."""
+        value_c = (
+            _f_to_c(value)
+            if self._current_unit() == UnitOfTemperature.FAHRENHEIT
+            else value
+        )
+        await self.coordinator.async_set_target_temperature(value_c)
 
 
 class JouleCookTimeNumber(CoordinatorEntity[JouleCoordinator], NumberEntity):
