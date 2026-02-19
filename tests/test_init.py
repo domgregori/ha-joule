@@ -23,11 +23,11 @@ async def test_setup_entry_stores_coordinator(
     assert isinstance(hass.data[DOMAIN][TEST_ENTRY_ID], JouleCoordinator)
 
 
-async def test_setup_entry_creates_sensor_and_switch(
+async def test_setup_entry_creates_all_entities(
     hass: HomeAssistant,
     setup_integration: MockConfigEntry,
 ) -> None:
-    """Successful setup creates both the sensor and switch entities."""
+    """Successful setup creates the sensor, switch, and both number entities."""
     from homeassistant.helpers import entity_registry as er
 
     registry = er.async_get(hass)
@@ -38,9 +38,17 @@ async def test_setup_entry_creates_sensor_and_switch(
     switch_id = registry.async_get_entity_id(
         "switch", DOMAIN, f"{TEST_ENTRY_ID}_switch"
     )
+    target_temp_id = registry.async_get_entity_id(
+        "number", DOMAIN, f"{TEST_ENTRY_ID}_target_temperature"
+    )
+    cook_time_id = registry.async_get_entity_id(
+        "number", DOMAIN, f"{TEST_ENTRY_ID}_cook_time_minutes"
+    )
 
     assert sensor_id is not None, "Temperature sensor entity was not created"
     assert switch_id is not None, "Sous vide switch entity was not created"
+    assert target_temp_id is not None, "Target temperature number entity was not created"
+    assert cook_time_id is not None, "Cook time number entity was not created"
 
 
 async def test_setup_entry_config_entry_not_ready_on_ble_failure(

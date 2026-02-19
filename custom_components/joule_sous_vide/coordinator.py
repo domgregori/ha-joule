@@ -89,6 +89,16 @@ class JouleCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._is_cooking = True
         await self.async_refresh()
 
+    async def async_set_target_temperature(self, value: float) -> None:
+        """Update the target temperature without starting a cook."""
+        self._target_temperature = value
+        await self.async_refresh()
+
+    async def async_set_cook_time(self, value: float) -> None:
+        """Update the cook time without starting a cook."""
+        self._cook_time_minutes = value
+        await self.async_refresh()
+
     async def async_stop_cooking(self) -> None:
         """Stop the cooking cycle."""
         try:
