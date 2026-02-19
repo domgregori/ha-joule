@@ -8,14 +8,15 @@ Control and monitor your **ChefSteps Joule** circulator directly from Home Assis
 
 ## What You Get
 
-Once set up, Home Assistant creates two entities for your Joule:
+Once set up, Home Assistant creates five entities for your Joule, all under a single **ChefSteps Joule Sous Vide** device:
 
-| Entity | What it does |
-|---|---|
-| **Current Temperature** sensor | Shows the live water temperature in °C, updated every 30 seconds |
-| **Sous Vide** switch | Starts and stops the cooking cycle |
-
-Both entities appear under a single **ChefSteps Joule Sous Vide** device in Home Assistant.
+| Entity | Type | What it does |
+|---|---|---|
+| **Current Temperature** | Sensor | Live water temperature in °C, updated every 30 seconds |
+| **Sous Vide** | Switch | Starts and stops the cooking cycle |
+| **Target Temperature** | Number | Temperature to heat to (displayed in °F or °C, default °F) |
+| **Cook Time** | Number | How long to cook in minutes (0 = no time limit) |
+| **Temperature Unit** | Select | Choose °F or °C for the Target Temperature display (persisted across restarts) |
 
 ---
 
@@ -79,7 +80,11 @@ bluetoothctl scan on
 
 ## Using the Integration
 
-**Start a cooking session:** Toggle the **Sous Vide** switch on. The Joule will heat to its default target temperature (60 °C).
+**Set your temperature:** Adjust the **Target Temperature** number entity to your desired setpoint before starting. Use the **Temperature Unit** selector to choose °F or °C — your preference is saved across restarts.
+
+**Set cook time:** Set the **Cook Time** number entity (in minutes). Leave it at 0 for no time limit.
+
+**Start a cooking session:** Toggle the **Sous Vide** switch on. The Joule reads the current Target Temperature and Cook Time values and begins heating.
 
 **Stop cooking:** Toggle the switch off. The Joule stops immediately.
 
@@ -141,7 +146,7 @@ These are the next planned improvements, in priority order:
 
 ### ~~1 — Set a target temperature~~ ✅ Done
 
-Two `number` entities — **Target Temperature** and **Cook Time** (0–1440 min) — let you set cooking parameters from the dashboard or an automation. When the Sous Vide switch is turned on it reads the current values and passes them to the device. A **Temperature Unit** `select` entity (default °F) controls whether the target temperature is displayed and entered in °F or °C; the device always receives °C internally.
+Two `number` entities — **Target Temperature** and **Cook Time** (0–1440 min) — let you set cooking parameters from the dashboard or an automation. When the Sous Vide switch is turned on it reads the current values and passes them to the device. A **Temperature Unit** `select` entity (default °F) controls whether the target temperature is displayed and entered in °F or °C; the device always receives °C internally. The unit preference is persisted to the config entry and survives Home Assistant restarts.
 
 ### 2 — Custom Lovelace card
 
