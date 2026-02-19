@@ -90,7 +90,7 @@ While cooking, the **Current Temperature** sensor shows the live water temperatu
 |---|---|
 | Target temperature and cook time are read at start | Changing them while cooking has no effect on the current cook |
 | Cook time of 0 | The Joule runs until you turn the switch off |
-| Stopping from the ChefSteps app | HA won't detect this automatically — turn the switch off in HA to resynchronise |
+| Stopping from the ChefSteps app | HA detects the change within 30 seconds via device polling |
 
 ---
 

@@ -69,7 +69,7 @@ Starts and stops the Joule cooking cycle.
 
 - **Turning on:** reads the current **Target Temperature** and **Cook Time** values and sends them to the device, then starts the cooking cycle.
 - **Turning off:** sends a stop command to the device immediately.
-- **State tracking:** tracked by HA internally, not read back from the device. If you stop the Joule from the ChefSteps app, HA will not detect this automatically.
+- **State tracking:** the cooking state is read from the device's `program_step` field every 30 seconds. If you stop the Joule from the ChefSteps app, HA will detect the change at the next poll.
 
 ### Services
 

@@ -84,8 +84,8 @@ Before diving in, run through this list:
 2. **The Joule is in a fault state.**
    Unplug the Joule for 10 seconds, plug it back in, and try again.
 
-3. **Bluetooth characteristic UUIDs are not yet confirmed.**
-   This integration is early-stage (v0.3). The Bluetooth protocol characteristics are based on reverse-engineering and may not be finalised. If control consistently fails, please [open an issue on GitHub](https://github.com/acato/ha-joule/issues) with your HA logs attached.
+3. **BLE protocol mismatch.**
+   The Bluetooth protocol is based on reverse-engineering and may not work on all Joule firmware versions. If control consistently fails, please [open an issue on GitHub](https://github.com/acato/ha-joule/issues) with your HA logs attached.
 
 ---
 
@@ -93,9 +93,9 @@ Before diving in, run through this list:
 
 **Symptom:** The switch shows "On" in HA, but the Joule's LED shows it is not cooking.
 
-**Explanation:** The Joule's cooking state cannot be read back from the device — Home Assistant tracks it internally based on commands it has sent. If the Joule was stopped from the ChefSteps app, from the device itself, or lost power, HA will not automatically detect this.
+**Explanation:** The integration reads the Joule's cooking state from the device every 30 seconds. If the Joule was stopped from the ChefSteps app or lost power, HA will detect the change at the next poll cycle (up to 30 seconds).
 
-**Fix:** Turn the switch **Off** in HA, then **On** again if you want to resume cooking. This resynchronises the state.
+**If the state does not update after a minute:** Turn the switch **Off** in HA, then **On** again if you want to resume cooking.
 
 ---
 

@@ -4,7 +4,7 @@ Control and monitor your **ChefSteps Joule** circulator directly from Home Assis
 
 ![Joule Sous Vide card](docs/images/card-screenshot.svg)
 
-> **Status: Early-stage (v0.5).** The core integration works. Some Bluetooth characteristic UUIDs are still being confirmed against real hardware. See [Known Limitations](#known-limitations).
+> **Status: v0.6 — Functional.** The integration communicates with the Joule over BLE using reverse-engineered protobuf messages. Real-hardware validation is in progress. See [Known Limitations](#known-limitations).
 
 ---
 
@@ -118,9 +118,8 @@ action:
 
 | Limitation | Details |
 |---|---|
-| **Bluetooth characteristic UUIDs** | The BLE protocol is based on reverse-engineering and is not fully confirmed. Control commands may not work on all firmware versions. |
-| **State tracking** | The Joule's on/off state is tracked by HA, not read back from the device. If you stop the Joule from the ChefSteps app or physically unplug it, HA will not detect the change automatically. |
-| **Temperature control** | Target temperature and cook time currently use fixed defaults (60 °C, unlimited). Custom values via the HA UI are planned for a future version. |
+| **BLE protocol** | The protobuf message format is based on reverse-engineering of the [chromeJoule](https://github.com/li-dennis/chromeJoule) project. Commands may not work on all firmware versions. |
+| **State polling delay** | Cooking state is read from the device every 30 seconds via `program_step`. Between polls, state may be stale if the Joule is controlled from the ChefSteps app. |
 | **One connection at a time** | Bluetooth only supports one active connection. Close the ChefSteps app before using this integration. |
 
 ---
@@ -165,6 +164,10 @@ A `custom:joule-sous-vide-card` Lovelace card that shows current temperature, ta
 ### ~~3 — HACS integration and install workflow~~ ✅ Done
 
 Added `hacs.json`, a GitHub Actions release workflow (triggered by version tags, validates `manifest.json` version, publishes a zip as a GitHub Release), and a CI workflow that runs the test suite on every push. The integration can now be installed via HACS as a custom repository.
+
+### ~~4 — Real BLE UUIDs and protobuf message layer~~ ✅ Done
+
+Replaced placeholder BLE UUIDs with real values reverse-engineered from [chromeJoule](https://github.com/li-dennis/chromeJoule). Implemented a hand-rolled protobuf encoder/decoder in `joule_proto.py` (no external dependencies) covering `StartProgramRequest`, `StopCirculatorRequest`, `BeginLiveFeedRequest`, and `CirculatorDataPoint`. The coordinator now polls via `BeginLiveFeedRequest`, reads live temperature from `CirculatorDataPoint.bath_temp`, and derives cooking state from the device's `program_step` field.
 
 ---
 
