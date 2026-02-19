@@ -2,7 +2,9 @@
 
 Control and monitor your **ChefSteps Joule** circulator directly from Home Assistant, without the ChefSteps app.
 
-> **Status: Early-stage (v0.3).** The core integration works. Some Bluetooth characteristic UUIDs are still being confirmed against real hardware. See [Known Limitations](#known-limitations).
+![Joule Sous Vide card](docs/images/card-screenshot.svg)
+
+> **Status: Early-stage (v0.5).** The core integration works. Some Bluetooth characteristic UUIDs are still being confirmed against real hardware. See [Known Limitations](#known-limitations).
 
 ---
 
