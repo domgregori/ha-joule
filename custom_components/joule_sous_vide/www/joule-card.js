@@ -1,5 +1,6 @@
 /**
  * Joule Sous Vide — Custom Lovelace Card
+ * Version: 0.5.0
  *
  * Config:
  *   type: custom:joule-sous-vide-card
@@ -10,6 +11,13 @@
  *   entity_cook_time:    number.joule_cook_time
  *   entity_unit:         select.joule_temperature_unit
  */
+
+const CARD_VERSION = "0.5.0";
+console.info(
+  `%c JOULE-SOUS-VIDE-CARD %c v${CARD_VERSION} `,
+  "color: white; background: #03a9f4; font-weight: bold; padding: 2px 6px; border-radius: 3px 0 0 3px;",
+  "color: #03a9f4; background: #e8f5e9; font-weight: bold; padding: 2px 6px; border-radius: 0 3px 3px 0;"
+);
 
 class JouleSousVideCard extends HTMLElement {
   /* ─── Lovelace lifecycle ─────────────────────────────────────── */
@@ -427,12 +435,14 @@ class JouleSousVideCard extends HTMLElement {
 
 customElements.define("joule-sous-vide-card", JouleSousVideCard);
 
-// Register for the Lovelace card picker
+// Register for the Lovelace card picker (picked up by HACS and the card editor)
 window.customCards = window.customCards || [];
 window.customCards.push({
   type: "joule-sous-vide-card",
   name: "Joule Sous Vide",
   description:
     "Control and monitor your ChefSteps Joule directly from a Lovelace dashboard.",
+  version: CARD_VERSION,
   preview: false,
+  documentationURL: "https://github.com/acato/ha-joule",
 });

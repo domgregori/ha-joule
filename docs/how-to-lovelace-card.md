@@ -16,11 +16,25 @@ The **Joule Sous Vide** card gives you a single, at-a-glance panel for your Joul
 
 ---
 
-## Add the Card to a Dashboard
+## Install the Card
 
-### Step 1 — Register the card as a Lovelace resource
+There are two ways to get the card resource into Home Assistant. Choose the one that matches how you prefer to manage your setup.
 
-The integration registers the card file automatically at startup. To tell Lovelace about it:
+### Option A — HACS (recommended)
+
+The card is available in HACS as a standalone Frontend plugin from the same repository as the integration.
+
+1. In Home Assistant, go to **HACS** → **Frontend**.
+2. Click **⋮** → **Custom repositories**.
+3. Add `https://github.com/acato/ha-joule`, category **Frontend**.
+4. Search for **ChefSteps Joule Sous Vide** and click **Download**.
+5. **Reload the browser tab.**
+
+> ✅ HACS automatically registers the card as a Lovelace resource — no manual resource step needed.
+
+### Option B — Bundled with the integration (manual resource)
+
+If you installed the integration via HACS or manually, the card file is already served by Home Assistant at startup. You just need to register it as a Lovelace resource:
 
 1. Go to **Settings** → **Dashboards**.
 2. Click **⋮** (menu) → **Resources**.
@@ -32,7 +46,9 @@ The integration registers the card file automatically at startup. To tell Lovela
 
 > ✅ The card is now available in the card picker.
 
-### Step 2 — Add the card to a dashboard
+---
+
+## Add the Card to a Dashboard
 
 1. Edit your dashboard.
 2. Click **+ Add card**.
@@ -85,7 +101,7 @@ entity_unit:         select.joule_temperature_unit
 
 **The card shows "Device unavailable":** The Joule is out of Bluetooth range, powered off, or another app has the connection. The card updates automatically when the device comes back online.
 
-**The card is not found in the card picker:** Make sure you added the resource URL correctly (step 1) and reloaded the browser. The URL must be `/joule_sous_vide/joule-card.js` (no trailing slash).
+**The card is not found in the card picker:** If you used Option B, check the resource URL is exactly `/joule_sous_vide/joule-card.js` and that you reloaded the browser. If you used HACS Frontend, check that the download completed successfully in HACS.
 
 **Config validation error on save:** All five entity IDs are required. Copy them from the entity detail pages as described above.
 

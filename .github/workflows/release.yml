@@ -29,11 +29,27 @@ jobs:
           fi
           echo "✅ Version $manifest_version matches tag"
 
+      - name: Validate card version matches tag
+        run: |
+          card_version=$(grep -m1 'CARD_VERSION\s*=' custom_components/joule_sous_vide/www/joule-card.js \
+            | sed 's/.*"\(.*\)".*/\1/')
+          tag_version="${{ steps.version.outputs.version }}"
+          if [ "$card_version" != "$tag_version" ]; then
+            echo "❌ Card version mismatch: joule-card.js has $card_version but tag is v$tag_version"
+            exit 1
+          fi
+          echo "✅ Card version $card_version matches tag"
+
       - name: Package integration
         run: zip -r joule_sous_vide.zip custom_components/joule_sous_vide/
+
+      - name: Copy card for standalone release asset
+        run: cp custom_components/joule_sous_vide/www/joule-card.js joule-card.js
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: joule_sous_vide.zip
+          files: |
+            joule_sous_vide.zip
+            joule-card.js
           generate_release_notes: true

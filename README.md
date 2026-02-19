@@ -35,16 +35,28 @@ Once set up, Home Assistant creates five entities for your Joule, all under a si
 
 [HACS](https://hacs.xyz) is the Home Assistant Community Store. It handles installation and updates automatically.
 
+**Step 1 — Install the integration**
+
 1. Make sure [HACS is installed](https://hacs.xyz/docs/use/).
 2. In Home Assistant, go to **HACS** → **Integrations**.
 3. Click **⋮** → **Custom repositories**, add `https://github.com/acato/ha-joule`, category **Integration**.
 4. Search for **ChefSteps Joule Sous Vide** and click **Download**.
 5. **Restart Home Assistant.**
 
+**Step 2 — Install the Lovelace card**
+
+1. In HACS, go to **Frontend**.
+2. Click **⋮** → **Custom repositories**, add `https://github.com/acato/ha-joule`, category **Frontend**.
+3. Search for **ChefSteps Joule Sous Vide** and click **Download**.
+4. **Reload the browser tab.**
+
+> The card is now available in the card picker. See [How To: Use the Custom Lovelace Card](docs/how-to-lovelace-card.md) for setup instructions.
+
 ### Method 2 — Manual
 
 1. Copy the `custom_components/joule_sous_vide/` folder into the `custom_components/` directory inside your HA configuration directory.
 2. **Restart Home Assistant.**
+3. The Lovelace card is served automatically — register `/joule_sous_vide/joule-card.js` as a Lovelace resource (JavaScript module) and reload the browser.
 
 ### Add the integration
 
