@@ -146,6 +146,7 @@ For full troubleshooting steps, see **[docs/troubleshooting.md](docs/troubleshoo
 - [How To: Use the Custom Lovelace Card](docs/how-to-lovelace-card.md)
 - [Entity Reference](docs/reference-entities.md)
 - [Troubleshooting](docs/troubleshooting.md)
+- [Advanced: Finding BLE UUIDs with nRF Connect](docs/how-to-find-uuids.md)
 
 ---
 
