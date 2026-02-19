@@ -135,6 +135,24 @@ For full troubleshooting steps, see **[docs/troubleshooting.md](docs/troubleshoo
 
 ---
 
+## Road Map
+
+These are the next planned improvements, in priority order:
+
+### 1 — Set a target temperature
+
+Right now the Joule always heats to the default 60 °C. The next step is to expose temperature and cook time as configurable inputs — either through a HA `number` entity or an options flow — so you can set them from the dashboard or an automation without editing code.
+
+### 2 — Custom Lovelace card
+
+A dedicated dashboard card that shows the current water temperature, the target temperature, a start/stop button, and a countdown timer in one place. This would replace the current approach of arranging individual entities manually on a dashboard.
+
+### 3 — HACS integration and install workflow
+
+Package the integration for the [Home Assistant Community Store (HACS)](https://hacs.xyz) so users can install and update it in one click without copying files manually. This involves adding a `hacs.json` manifest, a GitHub Actions release workflow that tags versions and publishes a release, and submitting the repository for HACS default inclusion.
+
+---
+
 ## Contributing
 
 Issues and pull requests are welcome at [github.com/acato/ha-joule](https://github.com/acato/ha-joule).
