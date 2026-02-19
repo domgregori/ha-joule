@@ -1,13 +1,13 @@
 {
   "domain": "joule_sous_vide",
   "name": "ChefSteps Joule Sous Vide",
-  "version": "0.5.0",
-  "documentation": "https://github.com/acato/ha-joule",
-  "issue_tracker": "https://github.com/acato/ha-joule/issues",
-  "dependencies": [],
   "after_dependencies": ["http"],
   "codeowners": ["@catomaior"],
-  "requirements": ["pygatt"],
   "config_flow": true,
-  "iot_class": "local_polling"
+  "dependencies": [],
+  "documentation": "https://github.com/acato/ha-joule",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/acato/ha-joule/issues",
+  "requirements": ["pygatt"],
+  "version": "0.5.0"
 }

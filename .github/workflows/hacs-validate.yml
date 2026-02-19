@@ -16,6 +16,8 @@ jobs:
         uses: hacs/action@main
         with:
           category: integration
+          # brands check will pass once home-assistant/brands#9726 is merged
+          ignore: brands
 
   hacs-plugin:
     name: HACS Plugin
