@@ -8,6 +8,6 @@
   "documentation": "https://github.com/acato/ha-joule",
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/acato/ha-joule/issues",
-  "requirements": ["bleak"],
+  "requirements": ["bleak", "bleak-retry-connector"],
   "version": "0.6.0"
 }

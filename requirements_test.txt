@@ -3,3 +3,4 @@ pytest-homeassistant-custom-component
 pytest-asyncio
 pytest-cov
 bleak
+bleak-retry-connector

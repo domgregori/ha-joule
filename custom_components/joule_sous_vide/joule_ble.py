@@ -10,8 +10,9 @@ import logging
 from threading import Lock, Thread
 from typing import Any, Callable
 
-from bleak import BleakClient
+from bleak import BleakClient, BleakScanner
 from bleak.exc import BleakError
+from bleak_retry_connector import BleakClientWithServiceCache, establish_connection
 
 from .const import (
     READ_CHAR_UUID,
@@ -81,10 +82,16 @@ class JouleBLEAPI:
         if self._client is not None and self._client.is_connected:
             return
 
-        if self._client is None:
-            self._client = BleakClient(self.mac_address)
+        device = await BleakScanner.find_device_by_address(self.mac_address, timeout=10.0)
+        if device is None:
+            raise JouleBLEError(f"Failed to connect to {self.mac_address}")
 
-        await self._client.connect()
+        self._client = await establish_connection(
+            BleakClientWithServiceCache,
+            device,
+            name=device.name or self.mac_address,
+            max_attempts=4,
+        )
 
     async def _disconnect_async(self) -> None:
         """Close the BLE connection if one exists."""
