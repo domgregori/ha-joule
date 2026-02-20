@@ -6,6 +6,7 @@ called via hass.async_add_executor_job() from an async context.
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 from threading import Lock, Thread
 from typing import Any, Callable
@@ -100,10 +101,19 @@ class JouleBLEAPI:
             name=device.name or self.mac_address,
             max_attempts=4,
         )
-        # Ensure service/characteristic cache is populated before first I/O.
-        _LOGGER.debug("Connected to %s, loading services", self.mac_address)
-        await self._client.get_services()
-        _LOGGER.debug("Services loaded for %s", self.mac_address)
+        # Best-effort compatibility across bleak versions/backends.
+        _LOGGER.debug("Connected to %s, checking services availability", self.mac_address)
+        get_services = getattr(self._client, "get_services", None)
+        if callable(get_services):
+            result = get_services()
+            if inspect.isawaitable(result):
+                await result
+            _LOGGER.debug("Services loaded for %s via get_services()", self.mac_address)
+        else:
+            _LOGGER.debug(
+                "Client for %s has no get_services(); continuing with cached/discovered services",
+                self.mac_address,
+            )
 
     async def _disconnect_async(self) -> None:
         """Close the BLE connection if one exists."""
