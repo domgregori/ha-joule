@@ -80,12 +80,20 @@ class JouleBLEAPI:
     async def _connect_async(self) -> None:
         """Open a BLE connection if not already connected."""
         if self._client is not None and self._client.is_connected:
+            _LOGGER.debug("Already connected to Joule at %s", self.mac_address)
             return
 
+        _LOGGER.debug("Scanning for Joule device at %s", self.mac_address)
         device = await BleakScanner.find_device_by_address(self.mac_address, timeout=10.0)
         if device is None:
+            _LOGGER.debug("Device not found during scan for %s", self.mac_address)
             raise JouleBLEError(f"Failed to connect to {self.mac_address}")
 
+        _LOGGER.debug(
+            "Found Joule device for %s (name=%s), establishing BLE connection",
+            self.mac_address,
+            device.name,
+        )
         self._client = await establish_connection(
             BleakClientWithServiceCache,
             device,
@@ -93,19 +101,30 @@ class JouleBLEAPI:
             max_attempts=4,
         )
         # Ensure service/characteristic cache is populated before first I/O.
+        _LOGGER.debug("Connected to %s, loading services", self.mac_address)
         await self._client.get_services()
+        _LOGGER.debug("Services loaded for %s", self.mac_address)
 
     async def _disconnect_async(self) -> None:
         """Close the BLE connection if one exists."""
         if self._client is None:
+            _LOGGER.debug("Disconnect called with no active client for %s", self.mac_address)
             return
 
         if self._client.is_connected:
+            _LOGGER.debug("Stopping notifications and disconnecting %s", self.mac_address)
             try:
                 await self._client.stop_notify(SUBSCRIBE_CHAR_UUID)
             except BleakError:
+                _LOGGER.debug(
+                    "stop_notify failed for %s on %s",
+                    self.mac_address,
+                    SUBSCRIBE_CHAR_UUID,
+                    exc_info=True,
+                )
                 pass
             await self._client.disconnect()
+            _LOGGER.debug("Disconnected from %s", self.mac_address)
 
         self._client = None
 
@@ -134,9 +153,21 @@ class JouleBLEAPI:
 
     def write_message(self, payload: bytes) -> None:
         """Write a protobuf-encoded message to the device."""
+        _LOGGER.debug(
+            "Writing %d bytes to %s on %s",
+            len(payload),
+            self.mac_address,
+            WRITE_CHAR_UUID,
+        )
         try:
             self._run_coro(self._write_message_async(payload))
         except (BleakError, Exception) as err:  # noqa: BLE001
+            _LOGGER.debug(
+                "Write failed for %s (%d bytes)",
+                self.mac_address,
+                len(payload),
+                exc_info=True,
+            )
             raise JouleBLEError("Failed to write message to Joule") from err
 
     async def _write_message_async(self, payload: bytes) -> None:
@@ -145,15 +176,30 @@ class JouleBLEAPI:
             raise JouleBLEError("Not connected to Joule")
         try:
             await self._client.write_gatt_char(WRITE_CHAR_UUID, payload, response=False)
+            _LOGGER.debug("Write without response succeeded for %s", self.mac_address)
         except BleakError:
             # Some stacks/firmware reject write-without-response for this char.
+            _LOGGER.debug(
+                "Write without response failed for %s, retrying with response=True",
+                self.mac_address,
+                exc_info=True,
+            )
             await self._client.write_gatt_char(WRITE_CHAR_UUID, payload, response=True)
+            _LOGGER.debug("Write with response succeeded for %s", self.mac_address)
 
     def read_message(self) -> bytes:
         """Read a protobuf-encoded response from the device."""
         try:
-            return self._run_coro(self._read_message_async())
+            result = self._run_coro(self._read_message_async())
+            _LOGGER.debug(
+                "Read %d bytes from %s on %s",
+                len(result),
+                self.mac_address,
+                READ_CHAR_UUID,
+            )
+            return result
         except (BleakError, Exception) as err:  # noqa: BLE001
+            _LOGGER.debug("Read failed for %s", self.mac_address, exc_info=True)
             raise JouleBLEError("Failed to read message from Joule") from err
 
     async def _read_message_async(self) -> bytes:
@@ -167,9 +213,16 @@ class JouleBLEAPI:
 
         ``callback`` is called with ``(handle, value)`` for each notification.
         """
+        _LOGGER.debug(
+            "Subscribing to notifications for %s on %s",
+            self.mac_address,
+            SUBSCRIBE_CHAR_UUID,
+        )
         try:
             self._run_coro(self._subscribe_async(callback))
+            _LOGGER.debug("Subscribed to notifications for %s", self.mac_address)
         except (BleakError, Exception) as err:  # noqa: BLE001
+            _LOGGER.debug("Subscribe failed for %s", self.mac_address, exc_info=True)
             raise JouleBLEError("Failed to subscribe to Joule notifications") from err
 
     async def _subscribe_async(self, callback: Callable[[int, bytes], None]) -> None:
@@ -179,6 +232,12 @@ class JouleBLEAPI:
 
         def _bleak_callback(sender: Any, data: bytearray) -> None:
             handle = sender if isinstance(sender, int) else getattr(sender, "handle", 0)
+            _LOGGER.debug(
+                "Notification from %s handle=%s bytes=%d",
+                self.mac_address,
+                handle,
+                len(data),
+            )
             callback(handle, bytes(data))
 
         await self._client.start_notify(SUBSCRIBE_CHAR_UUID, _bleak_callback)
