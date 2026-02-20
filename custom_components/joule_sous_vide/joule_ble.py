@@ -92,6 +92,8 @@ class JouleBLEAPI:
             name=device.name or self.mac_address,
             max_attempts=4,
         )
+        # Ensure service/characteristic cache is populated before first I/O.
+        await self._client.get_services()
 
     async def _disconnect_async(self) -> None:
         """Close the BLE connection if one exists."""
@@ -141,7 +143,11 @@ class JouleBLEAPI:
         """Coroutine implementation for writing to the Joule characteristic."""
         if self._client is None or not self._client.is_connected:
             raise JouleBLEError("Not connected to Joule")
-        await self._client.write_gatt_char(WRITE_CHAR_UUID, payload, response=False)
+        try:
+            await self._client.write_gatt_char(WRITE_CHAR_UUID, payload, response=False)
+        except BleakError:
+            # Some stacks/firmware reject write-without-response for this char.
+            await self._client.write_gatt_char(WRITE_CHAR_UUID, payload, response=True)
 
     def read_message(self) -> bytes:
         """Read a protobuf-encoded response from the device."""
