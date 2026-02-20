@@ -65,7 +65,7 @@ class JouleCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
 
     def _on_notification(self, handle: int, value: bytes) -> None:
-        """Handle a BLE notification from pygatt's background thread."""
+        """Handle a BLE notification callback from the BLE client thread."""
         data_point = parse_notification(bytes(value))
         if data_point is not None:
             self._latest_data_point = data_point

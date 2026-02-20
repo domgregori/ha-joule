@@ -8,6 +8,6 @@
   "documentation": "https://github.com/acato/ha-joule",
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/acato/ha-joule/issues",
-  "requirements": ["pygatt"],
+  "requirements": ["bleak"],
   "version": "0.6.0"
 }
